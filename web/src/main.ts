@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { Keyboard, CoreS3, wifiTarget } from './input';
 import { buildCourse, crossGate, isNearCourse, launch } from './course';
+import { RenderQuality } from './render-quality';
 import './style.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -10,14 +11,31 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <div class="reticle" aria-hidden="true">⊕</div><div id="notice" role="status"></div>
 <div id="warning" role="status" hidden></div><div id="ring-guide" hidden><span class="guide-symbol" aria-hidden="true">➤</span><span class="guide-distance"></span></div><div id="crash-flash"></div>
 <div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">光のリングをくぐろう<small>Fly through the glowing rings</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>Shift / Space</kbd> ブースト · Boost</li><li><kbd>R</kbd> リスタート · Restart</li></ul><p>地面・岩柱に衝突するとフライト終了。<br>Ground & rock pillars end the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
-<footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>SHIFT / SPACE</kbd> Boost</span></div><div><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button></div></footer>`;
+<footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>SHIFT / SPACE</kbd> Boost</span></div><div class="actions"><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button><button id="fullscreen" type="button" aria-pressed="false" hidden>全画面</button></div></footer>`;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#a6d2df'); scene.fog = new THREE.Fog('#a6d2df',280,1400);
 const renderer = new THREE.WebGLRenderer({antialias:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight);
-renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.domElement.setAttribute('aria-label','3D flight game'); document.body.prepend(renderer.domElement);
-const camera = new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.5,2400);
+const camera = new THREE.PerspectiveCamera(60,1,.5,2400);
+const quality = new RenderQuality();
+let viewWidth = 0, viewHeight = 0, viewDpr = 0, renderRatio = 0;
+function resizeRenderer() {
+  const width = Math.max(1, innerWidth), height = Math.max(1, innerHeight);
+  const dpr = devicePixelRatio;
+  if (width !== viewWidth || height !== viewHeight) {
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    quality.resetSample();
+  }
+  const ratio = quality.pixelRatio(width,height,dpr);
+  if (width !== viewWidth || height !== viewHeight || ratio !== renderRatio) {
+    renderer.setDrawingBufferSize(width,height,ratio);
+  }
+  viewWidth = width; viewHeight = height; viewDpr = dpr; renderRatio = ratio;
+}
+resizeRenderer();
+window.addEventListener('resize',resizeRenderer);
+document.addEventListener('visibilitychange',() => quality.resetSample());
 scene.add(new THREE.HemisphereLight(0xe6f7ff,0x4e7860,2.4));
 const sun = new THREE.DirectionalLight(0xffe6bd,3); sun.position.set(-180,300,140); scene.add(sun);
 const ground = new THREE.Mesh(new THREE.PlaneGeometry(12000,12000),new THREE.MeshStandardMaterial({color:0x5e9480,roughness:1}));
@@ -26,12 +44,27 @@ const grid = new THREE.GridHelper(12000,240,0x73a38f,0x73a38f); grid.position.y=
 const pillarMaterial = new THREE.MeshStandardMaterial({color:0x4e7a70,flatShading:true});
 const pillars: {x:number;z:number;r:number;h:number}[] = [];
 const course = buildCourse();
+const pillarTiles = new Map<string, typeof pillars>();
 for (let i=0;i<160;i++) {
   const x = Math.sin(i*127.1)*2300, z = Math.cos(i*73.7)*3400-2350;
   const r=18+(i%5)*8, h=25+(i%9)*13;
   if (isNearCourse(course,x,z,r)) continue;
-  const hill = new THREE.Mesh(new THREE.CylinderGeometry(r*.65,r,h,5),pillarMaterial);
-  hill.position.set(x,h/2,z); scene.add(hill); pillars.push({x,z,r,h});
+  const pillar = {x,z,r,h};
+  pillars.push(pillar);
+  const tile = `${Math.floor(x/600)},${Math.floor(z/600)}`;
+  if (!pillarTiles.has(tile)) pillarTiles.set(tile,[]);
+  pillarTiles.get(tile)!.push(pillar);
+}
+const pillarGeometry = new THREE.CylinderGeometry(.65,1,1,5);
+const transform = new THREE.Matrix4();
+for (const tile of pillarTiles.values()) {
+  const batch = new THREE.InstancedMesh(pillarGeometry,pillarMaterial,tile.length);
+  tile.forEach(({x,z,r,h},i) => {
+    transform.makeScale(r,h,r).setPosition(x,h/2,z);
+    batch.setMatrixAt(i,transform);
+  });
+  batch.computeBoundingSphere();
+  scene.add(batch);
 }
 const plane = new THREE.Group();
 const cream = new THREE.MeshStandardMaterial({color:0xfff3d8,metalness:.25,roughness:.4});
@@ -48,8 +81,11 @@ part(new THREE.BoxGeometry(1.3,.24,2.15),orange,-4.8,-.08,1); part(new THREE.Box
 scene.add(plane);
 const activeRing = new THREE.MeshBasicMaterial({color:0xffc34c});
 const distantRing = new THREE.MeshBasicMaterial({color:0x6c9596});
+const rim = .045;
+const ringGeometry = new THREE.TorusGeometry(1,rim,8,64);
 const rings = course.map(({x,y,z,radius}) => {
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(radius+.9,.9,8,64),distantRing);
+  const ring = new THREE.Mesh(ringGeometry,distantRing);
+  ring.scale.setScalar(radius/(1-rim));
   ring.position.set(x,y,z);
   scene.add(ring);
   return ring;
@@ -88,10 +124,11 @@ let started=false,ended=false,noticeUntil=0;
 const position = new THREE.Vector3(launch.x,launch.y,launch.z);
 const previous = new THREE.Vector3(), forward = new THREE.Vector3(), aim = new THREE.Vector3();
 const reticle = document.querySelector<HTMLElement>('.reticle')!;
-const notice = el('notice');
+const notice = el('notice'), warning = el('warning');
 const ringGuide = el('ring-guide');
 const guideSymbol = ringGuide.querySelector<HTMLElement>('.guide-symbol')!;
 const guideDistance = ringGuide.querySelector<HTMLElement>('.guide-distance')!;
+const guideLocal = new THREE.Vector3(), guideProjected = new THREE.Vector3();
 function flash(s:string) {if (!ended) {notice.textContent=s; noticeUntil=performance.now()+2200;}}
 function takeoff() {started=true; el('flight-overlay').hidden=true; flash('照準を金色のリングへ / Aim at gold');}
 function resetFlight() {
@@ -117,13 +154,39 @@ function finish(cause:'ground'|'pillar'|'complete') {
 el('flight-overlay').onclick=()=>{if(!started)takeoff();};
 el('reset').onclick=reset; window.addEventListener('keydown',e=>{
   if(e.repeat)return;
+  if(e.code==='Enter' && e.target===fullscreen)return;
   if(e.code==='KeyR')reset();
   if((e.code==='Enter' && (!started || ended)) || (e.code==='Space' && !started)) {e.preventDefault(); if(!started)takeoff(); else reset();}
   if(e.code==='KeyC')center();
 });
 const clock=new THREE.Clock(); let radarTimer=0;
+const scoreDisplay=el('score'), speedDisplay=el('speed'), altDisplay=el('alt'), timeDisplay=el('time');
+const ringCountDisplay=el('ring-count'), throttleDisplay=el('throttle');
+const fullscreen=el('fullscreen');
+fullscreen.hidden=!document.fullscreenEnabled;
+fullscreen.onclick=async () => {
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  } catch {
+    flash('全画面にできません / Fullscreen unavailable');
+  }
+};
+document.addEventListener('fullscreenchange',() => {
+  const active=!!document.fullscreenElement;
+  fullscreen.setAttribute('aria-pressed',String(active));
+  fullscreen.textContent=active?'全画面を終了':'全画面';
+  resizeRenderer();
+});
+function showText(element:HTMLElement,value:string) {
+  if (element.textContent!==value) element.textContent=value;
+}
+const behind=new THREE.Vector3(), lookTarget=new THREE.Vector3(), up=new THREE.Vector3(0,1,0);
 function animate() {
-  requestAnimationFrame(animate); const dt=Math.min(clock.getDelta(),.05);
+  requestAnimationFrame(animate);
+  const frameTime=clock.getDelta();
+  if (quality.sample(frameTime*1000) || devicePixelRatio!==viewDpr) resizeRenderer();
+  const dt=Math.min(frameTime,.05);
   const key=keyboard.sample(), imu=device.sample(dt);
   const roll=THREE.MathUtils.clamp(key.roll+imu.roll,-1,1), climb=THREE.MathUtils.clamp(key.pitch+imu.pitch,-1,1);
   if(started && !ended) {
@@ -150,8 +213,9 @@ function animate() {
     }
   }
   plane.position.copy(position); plane.rotation.set(pitch,heading,bank,'YXZ');
-  const behind=new THREE.Vector3(0,8,27).applyAxisAngle(new THREE.Vector3(0,1,0),heading).add(position);
-  camera.position.lerp(behind,1-Math.exp(-dt*5)); camera.lookAt(position.clone().add(new THREE.Vector3(-Math.sin(heading)*35,2,-Math.cos(heading)*35)));
+  behind.set(0,8,27).applyAxisAngle(up,heading).add(position);
+  lookTarget.set(-Math.sin(heading)*35,2,-Math.cos(heading)*35).add(position);
+  camera.position.lerp(behind,1-Math.exp(-dt*5)); camera.lookAt(lookTarget);
   ringGuide.hidden = reticle.hidden = !started || ended;
   if (started && !ended) {
     const target = rings[nextGate].position;
@@ -162,24 +226,29 @@ function animate() {
     reticle.style.top = `${(1-aim.y)*50}%`;
     updateRingGuide(target);
   }
-  el('score').textContent=String(score).padStart(4,'0'); el('speed').textContent=speed.toFixed(0); el('alt').textContent=Math.max(0,position.y).toFixed(0);
-  el('time').textContent=formatTime();
-  el('ring-count').textContent=`${score/100}/${course.length}`; el('throttle').textContent=(throttle*100).toFixed(0);
-  notice.style.opacity=started && !ended && performance.now()<noticeUntil?'1':'0';
+  showText(scoreDisplay,String(score).padStart(4,'0'));
+  showText(speedDisplay,speed.toFixed(0));
+  showText(altDisplay,Math.max(0,position.y).toFixed(0));
+  showText(timeDisplay,formatTime());
+  showText(ringCountDisplay,`${score/100}/${course.length}`);
+  showText(throttleDisplay,(throttle*100).toFixed(0));
+  const opacity=started && !ended && performance.now()<noticeUntil?'1':'0';
+  if (notice.style.opacity!==opacity) notice.style.opacity=opacity;
   const low=position.y<12 || position.y<25 && Math.sin(pitch)<0;
   const obstacle=pillars.some(p=>{
     const dx=p.x-position.x,dz=p.z-position.z;
     const ahead=-dx*Math.sin(heading)-dz*Math.cos(heading), side=dx*Math.cos(heading)-dz*Math.sin(heading);
     return position.y<p.h+2 && ahead>0 && ahead-p.r<60 && Math.abs(side)<p.r+12;
   });
-  el('warning').hidden=!started || ended || (!low && !obstacle);
-  el('warning').textContent=low?'PULL UP · W / ↑':'OBSTACLE · A / D で回避';
+  warning.hidden=!started || ended || (!low && !obstacle);
+  showText(warning,low?'PULL UP · W / ↑':'OBSTACLE · A / D で回避');
   radarTimer+=dt; if(radarTimer>=.1) {radarTimer=0;device.send({t:'radar',h:THREE.MathUtils.radToDeg(heading),o:rings.filter(r=>r.visible && r.position.distanceTo(position)<1200).sort((a,b)=>a.position.distanceToSquared(position)-b.position.distanceToSquared(position)).slice(0,16).map(r=>[Math.round(r.position.x-position.x),Math.round(r.position.z-position.z)]),score,speed:Math.round(speed),alt:Math.round(position.y)});}
   renderer.render(scene,camera);
 }
 resetFlight(); animate();
 function updateRingGuide(target: THREE.Vector3) {
-  const local=target.clone().applyMatrix4(camera.matrixWorldInverse), projected=target.clone().project(camera);
+  const local=guideLocal.copy(target).applyMatrix4(camera.matrixWorldInverse);
+  const projected=guideProjected.copy(local).applyMatrix4(camera.projectionMatrix);
   const onScreen=local.z<0 && Math.abs(projected.x)<.88 && Math.abs(projected.y)<.8;
   let x=projected.x*innerWidth/2,y=-projected.y*innerHeight/2;
   if(!onScreen) {
@@ -194,6 +263,5 @@ function updateRingGuide(target: THREE.Vector3) {
   ringGuide.style.top=`${innerHeight/2+y+(onScreen?30:0)}px`;
   guideSymbol.hidden=onScreen;
   guideSymbol.style.transform=onScreen?'':`rotate(${Math.atan2(y,x)}rad)`;
-  guideDistance.textContent=`NEXT ${nextGate+1}/${course.length} · ${Math.round(target.distanceTo(position))} m`;
+  showText(guideDistance,`NEXT ${nextGate+1}/${course.length} · ${Math.round(target.distanceTo(position))} m`);
 }
-window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
