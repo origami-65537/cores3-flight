@@ -75,7 +75,11 @@ el('wifi').onclick=()=>{
 const servedByDevice=wifiTarget(location);
 if (location.protocol==='http:' && 'url' in servedByDevice) {wifiUrl=servedByDevice.url; void connectWifi(wifiUrl,true);}
 setInterval(()=>{if(wifiUrl && !device.connected) void connectWifi(wifiUrl,true);},3000);
-el('center').onclick=()=>{device.calibrate(); flash('センター設定 / Calibrated');};
+device.onCalibration=ready=>flash(ready?'センター設定 / Calibrated':'姿勢をキープ / Hold still to center');
+function center() {
+  if (!device.calibrate()) flash(device.connected?'姿勢データ待ち / Waiting for motion data':'CoreS3 を接続してください / Connect CoreS3 first');
+}
+el('center').onclick=center;
 const minSpeed = 22, speedRange = 38, cruiseThrottle = .4, cruiseSpeed = minSpeed+speedRange*cruiseThrottle;
 let heading=0,pitch=0,bank=0,speed=cruiseSpeed,throttle=cruiseThrottle,score=0,elapsed=0,nextGate=0;
 let ended=false,noticeUntil=0;
@@ -99,7 +103,7 @@ function reset() {
   camera.position.set(launch.x,launch.y+8,launch.z+27);
   flash('照準を金色のリングへ / Aim at gold');
 }
-el('reset').onclick=reset; window.addEventListener('keydown',e=>{if(e.code==='KeyR')reset(); if(e.code==='KeyC')device.calibrate();});
+el('reset').onclick=reset; window.addEventListener('keydown',e=>{if(e.code==='KeyR')reset(); if(e.code==='KeyC' && !e.repeat)center();});
 const clock=new THREE.Clock(); let radarTimer=0;
 function animate() {
   requestAnimationFrame(animate); const dt=Math.min(clock.getDelta(),.05);
