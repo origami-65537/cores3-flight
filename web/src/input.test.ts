@@ -43,8 +43,9 @@ test('Wi-Fi uses the same center and roll wrap and re-centers after reconnecting
   for (let i = 0; i < 10; i++) frame(179,-12);
   frame(-179,-12);
   a.deepEqual(device.sample(.05), neutral());
-  frame(-151,18);
-  a.ok(device.sample(.05).roll > .3);
+  frame(-151,-12);
+  a.ok(device.sample(.05).pitch > .3);
+  a.equal(device.sample(.05).roll, 0);
   socket.onclose?.();
   a.deepEqual(device.sample(.05), neutral());
   await connect();
@@ -54,7 +55,31 @@ test('Wi-Fi uses the same center and roll wrap and re-centers after reconnecting
   }
   frame(47,18);
   a.ok(device.sample(.05).roll > .3);
+  await assertLandscapeGestures(device, frame);
 });
+
+test('USB maps all four landscape tilt gestures to the matching flight axes', async t => {
+  await withSerial(t, async ({ device, frame }) => {
+    for (let i = 0; i < 10; i++) await frame(17,-12);
+    await assertLandscapeGestures(device, frame);
+  });
+});
+
+async function assertLandscapeGestures(device:CoreS3, frame:(r:number,p:number) => void | Promise<void>) {
+  const poses = [
+    {gesture:'right edge down', r:17, p:3, roll:1, pitch:0},
+    {gesture:'left edge down', r:17, p:-27, roll:-1, pitch:0},
+    {gesture:'top edge up', r:32, p:-12, roll:0, pitch:1},
+    {gesture:'top edge down', r:2, p:-12, roll:0, pitch:-1},
+  ];
+  for (const {gesture,r,p,roll,pitch} of poses) {
+    await frame(r,p);
+    for (let i = 0; i < 30; i++) device.sample(.05);
+    const actual = device.sample(.05);
+    a.ok(Math.abs(actual.roll-roll*axis(15)) < 1e-6, `${gesture}: roll ${actual.roll}`);
+    a.ok(Math.abs(actual.pitch-pitch*axis(15)) < 1e-6, `${gesture}: pitch ${actual.pitch}`);
+  }
+}
 
 test('USB auto-centers on fresh, noisy IMU data and preserves keyboard-ready neutral while waiting', async t => {
   await withSerial(t, async ({ device, frame, calibrations }) => {
@@ -75,12 +100,12 @@ test('USB auto-centers on fresh, noisy IMU data and preserves keyboard-ready neu
   });
 });
 
-test('manual center clears built-up steering and hardware center averages across the roll wrap', async t => {
+test('manual center clears built-up steering and hardware center averages wrapped device roll for game pitch', async t => {
   await withSerial(t, async ({ device, frame, calibrations }) => {
     for (let i = 0; i < 10; i++) await frame(179, 10);
     await frame(-179, 40);
-    a.equal(device.sample(.05).roll, 0);
-    a.ok(device.sample(.05).pitch > .5);
+    a.equal(device.sample(.05).pitch, 0);
+    a.ok(device.sample(.05).roll > .5);
     a.equal(device.calibrate(), true);
     a.deepEqual(device.sample(.05), neutral());
     for (let i = 0; i < 10; i++) await frame(-179, 40);
@@ -90,8 +115,8 @@ test('manual center clears built-up steering and hardware center averages across
     a.deepEqual(device.sample(.05), {...neutral(), boost:true});
     await frame(-177, 35);
     const input = device.sample(.05);
-    a.ok(input.roll > 0 && input.roll < .02);
-    a.equal(input.pitch, 0);
+    a.ok(input.pitch > 0 && input.pitch < .02);
+    a.equal(input.roll, 0);
   });
 });
 

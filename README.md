@@ -62,7 +62,7 @@ pio run
 
 1. シリアルモニターを閉じてから、PC の **Chrome / Edge** でゲームを開きます。Web Serial は HTTPS（Pages）または localhost が必要です。Firefox / Safari はキーボードモードで遊べます。
 2. HUD の「USBで接続」を押し、USB シリアルポートを選択します（115200 baud）。
-3. 本体を自然な姿勢で持ったまま接続すると、最初の姿勢データから自動でセンターを合わせます。持ち直したら「センター合わせ」または C を押し、「センター設定」が表示されるまで約 0.2 秒キープしてください。前後の傾きで上昇・下降、左右の傾きでバンクします。最大操作角は約 30°、小さな動きを無視するデッドゾーンと平滑化付きです。
+3. レーダーが正立する横向きで本体を自然に持ち、接続すると、最初の姿勢データから自動でセンターを合わせます。持ち直したら「センター合わせ」または C を押し、「センター設定」が表示されるまで約 0.2 秒キープしてください。本体の上辺を上げると機首が上がり、右辺を下げると右にバンクします。最大操作角は約 30°、小さな動きを無視するデッドゾーンと平滑化付きです。
 4. 本体画面の **下部左（BOOST）** を押すとブースト、**下部右（CENTER）** を押すとセンター合わせ。基準姿勢・持ち方で向きが変わるため、飛行前に軽く傾けて操作方向を確認してください。
 
 本体のレーダーは機首が上、半径 600 m です。黄色の点はリングの方向と距離を示します。リングの高さは PC 画面で確認してください。本体の `GAME LIVE` はゲームからデータを受信中、`NO GAME DATA` は未受信、`GAME DATA LOST` は受信が 2 秒途切れた状態です。`Raw R/P` はセンター補正前のロール・ピッチ角です。USB を抜くとキーボードに戻ります。ブラウザに IMU メッセージが 0.5 秒届かないと傾き操作を無効化します。キーボードは接続中も利用できます。
@@ -96,7 +96,7 @@ CoreS3 → PC、約 50 Hz:
 ```json
 {"t":"imu","r":5.2,"p":-3.1,"y":12.0,"b":1}
 ```
-`r` ロール・`p` ピッチ（度、加速度とジャイロの相補フィルター）、`y` ヨー（度、ジャイロ積分・ドリフトあり、現バージョンの操縦には不使用）。`b` はビットマスク: bit0=ブースト、bit1=センター合わせ。PC は bit1 の立ち上がりを検出すると短時間の姿勢データを平均してセンターを決めます。
+`r` は本体の X 軸まわりの角度（上辺が上がると正、ゲームではピッチ）、`p` は本体の Y 軸まわりの角度（右辺が下がると正、ゲームではバンク）。どちらも度単位の加速度・ジャイロの相補フィルター出力です。`y` はヨー（度、ジャイロ積分・ドリフトあり、操縦には不使用）。`b` はビットマスク: bit0=ブースト、bit1=センター合わせ。PC は bit1 の立ち上がりを検出すると短時間の姿勢データを平均してセンターを決めます。
 
 PC → CoreS3、約 10 Hz:
 ```json
@@ -125,4 +125,4 @@ The UI fonts in `web/public/fonts/` are SIL OFL subsets of Space Grotesk (Latin)
 
 ### Playtest without hardware
 
-On the game page, run the contents of [the mock serial device](web/fixtures/cores3-serial.js) in DevTools before clicking Connect. It streams the firmware's 50 Hz newline JSON with a non-level grip, a short boot delay, and small deterministic noise and drift. Set `coreS3Sim.roll` and `coreS3Sim.pitch` in degrees; set `coreS3Sim.buttons` to 1 for boost, 2 for center, or 0 to release. Set `coreS3Sim.paused` to test stale input and inspect `coreS3Sim.radar` for the game's telemetry. Reload to restore normal Web Serial.
+On the game page, run the contents of [the mock serial device](web/fixtures/cores3-serial.js) in DevTools before clicking Connect. It streams the firmware's 50 Hz newline JSON with a non-level grip, a short boot delay, and small deterministic noise and drift. After centering, add to `coreS3Sim.rightEdgeDown` to bank right or subtract to bank left; add to `coreS3Sim.topEdgeUp` to pitch up or subtract to pitch down (degrees). Set `coreS3Sim.buttons` to 1 for boost, 2 for center, or 0 to release. Set `coreS3Sim.paused` to test stale input and inspect `coreS3Sim.radar` for the game's telemetry. Reload to restore normal Web Serial.

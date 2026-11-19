@@ -137,8 +137,8 @@ export class CoreS3 implements InputSource {
     const boost = !!(this.imu.b&1);
     if (this.centering) return {...neutral(),boost};
     const blend = 1-Math.exp(-dt*10);
-    this.filtered.pitch += (axis(this.imu.p-this.center.p)-this.filtered.pitch)*blend;
-    this.filtered.roll += (axis(relativeRoll(this.imu.r,this.center.r))-this.filtered.roll)*blend;
+    this.filtered.pitch += (axis(relativeRoll(this.imu.r,this.center.r))-this.filtered.pitch)*blend;
+    this.filtered.roll += (axis(this.imu.p-this.center.p)-this.filtered.roll)*blend;
     return {...this.filtered,boost};
   }
   send(data:unknown) {
