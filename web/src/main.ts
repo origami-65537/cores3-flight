@@ -53,15 +53,16 @@ const el = (id:string) => document.getElementById(id)!;
 const showError=(e:unknown)=>{const s=e instanceof Error?e.message:String(e); el('status').textContent=s; flash(s);};
 let wifiUrl='', wifiBusy=false;
 device.onStatus=s => {el('status').textContent=s; el('connect').textContent=device.connected&&!wifiUrl?'USB接続済み ✓':'USBで接続 ↗'; el('wifi').textContent=device.connected&&wifiUrl?'Wi-Fi接続済み ✓':'Wi-Fiで接続 ↗';};
-el('connect').onclick=async()=> {try {await device.connect(); wifiUrl=''; device.onStatus('CoreS3 USB 接続済み / Connected');} catch(e) {showError(e);} };
+el('connect').onclick=async()=> {if(device.connected) return; try {await device.connect(); wifiUrl=''; device.onStatus('CoreS3 USB 接続済み / Connected');} catch(e) {showError(e);} };
 async function connectWifi(url:string, quiet=false) {
   if (wifiBusy || device.connected) return; wifiBusy=true;
   try {await device.connectWifi(url); wifiUrl=url; device.onStatus('CoreS3 Wi-Fi 接続済み / Connected');} catch(e) {if(!quiet) showError(e);} finally {wifiBusy=false;}
 }
 el('wifi').onclick=()=>{
-  const local=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
-  const host=local && location.protocol==='http:' ? prompt('CoreS3 のアドレス / CoreS3 address', localStorage.getItem('cores3-host') ?? 'cores3-flight.local') ?? undefined : undefined;
-  if (local && host===undefined) return;
+  if (device.connected) return;
+  const ask=location.protocol==='http:' && ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
+  const host=ask ? prompt('CoreS3 のアドレス / CoreS3 address', localStorage.getItem('cores3-host') ?? 'cores3-flight.local') ?? undefined : undefined;
+  if (ask && host===undefined) return;
   if (host) localStorage.setItem('cores3-host',host);
   const target=wifiTarget(location,host);
   if ('error' in target) showError(new Error(target.error)); else void connectWifi(target.url);
