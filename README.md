@@ -27,23 +27,43 @@ npm run dev
 
 画面下のボタンでもリセット・センター合わせができます。最初のリングはほぼ正面。高度を保ち、少しずつ旋回して挑戦してください。
 
-## CoreS3 の準備と接続
+## CoreS3 / CoreS3-Lite に書き込む
+
+CoreS3 と CoreS3-Lite は同じファームウェアを使います（どちらも BMI270 IMU 搭載）。CoreS3-SE は IMU 非搭載のため非対応です。
+
+### 1. PlatformIO を準備する
+
+Fedora では先に `sudo dnf install git python3 python3-pip` を実行します。ターミナルでリポジトリを取得してから、Python の仮想環境を作ります。
 
 ```sh
+git clone https://github.com/origami-65537/cores3-flight.git
+cd cores3-flight
+python3 -m venv "$HOME/.venvs/cores3-flight"
+. "$HOME/.venvs/cores3-flight/bin/activate"
 python3 -m pip install platformio==6.2.0
 cd firmware
 pio run
-pio run -t upload
 ```
 
-USB データケーブルで CoreS3 を接続します。書き込みポートが見つからない場合は本体のリセットボタンを長押ししてダウンロードモードへ移行し再実行してください。必要なら `pio run -t upload --upload-port /dev/ttyACM0` のように指定します。Linux ではシリアルポートへのアクセス権（dialout グループ等）も確認してください。
+クローン済みならリポジトリのルートから 3 行目以降を実行します。新しい端末では再度 `. "$HOME/.venvs/cores3-flight/bin/activate"` を実行します。
+
+### 2. USB で書き込む
+
+1. 充電専用ではない USB-C データケーブルで、本体の USB-C 端子と PC をつなぎます。`firmware/` で `pio device list` を抜き差しの前後で実行し、増えたポート（Fedora なら例: `/dev/ttyACM0`）を確認します。
+2. Fedora GNOME でポートが見えるのに開けない場合は、`ls -l /dev/ttyACM0` で実際のポートのグループを確認します。`dialout` なら `sudo usermod -aG dialout "$USER"` を実行し、GNOME からログアウトして再ログインします。それでも権限エラーが出る場合は [PlatformIO の udev ルール](https://docs.platformio.org/en/latest/core/installation/udev-rules.html) を導入し、ルールを再読み込みして USB を挿し直してください。
+3. `pio run -t upload` を実行します。複数のポートがある場合は `pio run -t upload --upload-port /dev/ttyACM0` の例のように、手順 1 で確認したポートを指定します。
+4. ポートが出ない、または書き込み時に接続できない場合は、USB をつないだまま**底面のリセットボタン**を内部の緑 LED が点灯するまで長押しし、離します。LED が消えるとダウンロードモードです（[CoreS3-Lite 公式手順](https://docs.m5stack.com/en/core/CoreS3-Lite)）。ポート番号が変わることがあるので、`pio device list` で確認してからアップロードをやり直します。書き込み成功後にゲーム画面が出なければ、リセットボタンを短く押します。
+
+### 3. ブラウザで遊ぶ
 
 1. シリアルモニターを閉じてから、PC の **Chrome / Edge** でゲームを開きます。Web Serial は HTTPS（Pages）または localhost が必要です。Firefox / Safari はキーボードモードで遊べます。
 2. HUD の「USBで接続」を押し、USB シリアルポートを選択します（115200 baud）。
 3. 本体を自然な姿勢で持って「センター合わせ」。前後の傾きで上昇・下降、左右の傾きでバンクします。最大操作角は約 30°、小さな動きを無視するデッドゾーンと平滑化付きです。
 4. 本体画面の **下部左（BOOST）** を押すとブースト、**下部右（CENTER）** を押すとセンター合わせ。基準姿勢・持ち方で向きが変わるため、飛行前に軽く傾けて操作方向を確認してください。
 
-画面は機首を上にしたレーダー（半径 600 m）。黄色の点がリングです。高さはレーダーではなく PC の画面で確認します。スコア・速度・高度も表示。2 秒間データが届かないと `Waiting for game...` と姿勢を表示します。USB を抜くとキーボードに戻ります。IMU データが 0.5 秒途切れると傾き操作を無効化します。キーボードは接続中も利用できます。
+本体のレーダーは機首が上、半径 600 m です。黄色の点はリングの方向と距離を示します。リングの高さは PC 画面で確認してください。本体の `GAME LIVE` はゲームからデータを受信中、`NO GAME DATA` は未受信、`GAME DATA LOST` は受信が 2 秒途切れた状態です。`Raw R/P` はセンター補正前のロール・ピッチ角です。USB を抜くとキーボードに戻ります。ブラウザに IMU メッセージが 0.5 秒届かないと傾き操作を無効化します。キーボードは接続中も利用できます。
+
+Fedora GNOME では RPM 版の Google Chrome または Chromium（`sudo dnf install chromium`）を使ってください。Flatpak 版で USB ポートが表示されない場合は、サンドボックスを変更する前に RPM 版で試してください。書き込み後に USB ポートが再接続されることがあるので、ブラウザでは起動後のポートを選びます。
 
 ## Wi-Fi で接続（Firefox でも可）
 
@@ -63,14 +83,6 @@ USB の Web Serial は Chrome / Edge 専用ですが、Wi-Fi なら Firefox で�
 `npm run dev` のローカル版（http://localhost:5173）からも「Wi-Fiで接続」で本体のアドレス（既定 `cores3-flight.local`）を入力すれば接続できます。USB と Wi-Fi は同時に有効で、USB 給電のまま Wi-Fi で遊んでも構いません。Fedora で `.local` が引けない場合は IP を使うか `sudo dnf install nss-mdns` を確認してください。ファイアウォールは PC 側からの接続なので通常変更不要です。
 
 WebSocket では 1 テキストフレームに 1 個の JSON（改行なし）を、シリアルプロトコル v1 と同じ内容でやりとりします。
-
-### Fedora (GNOME) での注意
-
-- CoreS3 / CoreS3-Lite のどちらでも同じファームウェアで動きます（どちらも BMI270 IMU 搭載。CoreS3-SE は IMU 非搭載のため非対応）。
-- ブラウザは RPM 版の Google Chrome または Chromium（`sudo dnf install chromium`）を使ってください。Flatpak 版はサンドボックスのためシリアルポートにアクセスできないことがあります。
-- シリアルポート権限: `sudo usermod -aG dialout $USER` を実行し、一度ログアウト→ログインします。`ls -l /dev/ttyACM*` でグループが `dialout` であることを確認できます。
-- PlatformIO の書き込みで権限エラーが出る場合は [udev ルール](https://docs.platformio.org/en/latest/core/installation/udev-rules.html) を追加してください。
-- ModemManager がポートを掴んで接続が不安定な場合は `sudo systemctl stop ModemManager` を試してください。
 
 ## シリアルプロトコル v1
 

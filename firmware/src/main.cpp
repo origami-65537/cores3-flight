@@ -30,6 +30,7 @@ float roll = 0, pitch = 0, yaw = 0, heading = 0;
 float targets[16][2];
 int targetCount = 0, score = 0, speed = 0, altitude = 0;
 uint32_t lastImu = 0, lastDraw = 0, lastRadar = 0;
+uint32_t lastImuSample = 0;
 bool received = false, initialized = false, overflow = false;
 String line;
 
@@ -118,10 +119,15 @@ void drawRadar(uint32_t now) {
   else radar.print("WiFi connecting...");
   if (socket.count()) radar.print(" *");
   if (accessPoint) { radar.setCursor(170, 21); radar.printf("PW %s", AP_PASSWORD); radar.setCursor(170, 33); radar.print("http://192.168.4.1/"); }
-  const int cx = 112, cy = 115, radius = 79;
+  const bool live = received && now-lastRadar < 2000;
+  radar.setTextColor(live ? 0x6F9A : 0xFECA);
+  radar.setCursor(12, 24);
+  radar.print(live ? "GAME LIVE" : received ? "GAME DATA LOST" : "NO GAME DATA");
+  radar.setTextColor(0xDFB6);
+  const int cx = 84, cy = 111, radius = 69;
   radar.drawCircle(cx, cy, radius, 0x4BEE); radar.drawCircle(cx, cy, radius/2, 0x224B);
   radar.drawLine(cx-radius, cy, cx+radius, cy, 0x224B); radar.drawLine(cx,cy-radius,cx,cy+radius,0x224B);
-  if (received && now-lastRadar < 2000) {
+  if (live) {
     float angle = heading * DEG_TO_RAD;
     for (int i=0;i<targetCount;i++) {
       float dx = targets[i][0], dz = targets[i][1];
@@ -130,17 +136,28 @@ void drawRadar(uint32_t now) {
       float x = right/600*radius, y = -forward/600*radius;
       if (x*x+y*y < (radius-4)*(radius-4)) radar.fillCircle(cx+int(x),cy+int(y),3,0xFECA);
     }
-    radar.setCursor(212,49); radar.printf("SCORE\n\n%d",score);
-    radar.setCursor(212,100); radar.printf("SPEED\n\n%d m/s",speed);
-    radar.setCursor(212,151); radar.printf("ALT\n\n%d m",altitude);
-    radar.setCursor(75,199); radar.print("RANGE 600m");
+    radar.setCursor(170, 47); radar.print("SCORE");
+    radar.setCursor(170, 82); radar.print("SPEED");
+    radar.setCursor(170, 117); radar.print("ALTITUDE");
+    radar.setTextSize(2);
+    radar.setCursor(170, 58); radar.printf("%d", score);
+    radar.setCursor(170, 93); radar.printf("%d m/s", speed);
+    radar.setCursor(170, 128); radar.printf("%d m", altitude);
+    radar.setTextSize(1);
   } else {
-    radar.setCursor(170,80); radar.print("Waiting for\ngame...");
-    radar.setCursor(170,125); radar.printf("Roll %5.1f\nPitch %4.1f",roll,pitch);
+    radar.setCursor(170, 61); radar.print("Open the game");
+    radar.setCursor(170, 75); radar.print("and connect CoreS3.");
   }
   radar.fillTriangle(cx,cy-9,cx-6,cy+6,cx+6,cy+6,0xEFFF);
-  radar.fillRect(0,216,158,24,0x236D); radar.fillRect(162,216,158,24,0x236D);
-  radar.setCursor(51,224); radar.print("BOOST"); radar.setCursor(214,224); radar.print("CENTER");
+  radar.setCursor(54, 188); radar.print("RANGE 600m");
+  radar.setCursor(170, 163);
+  if (!initialized) radar.print("IMU: no samples");
+  else if (now-lastImuSample > 500) radar.print("IMU: no recent data");
+  else radar.printf("Raw R:%+4.0f P:%+4.0f deg", roll, pitch);
+  radar.setCursor(170, 183); radar.print("Hold neutral; tap CENTER");
+  radar.fillRect(0, 200, 160, 40, 0x236D); radar.fillRect(160, 200, 160, 40, 0x334E);
+  radar.setTextColor(0xEFFF); radar.setTextSize(2);
+  radar.setCursor(50, 212); radar.print("BOOST"); radar.setCursor(204, 212); radar.print("CENTER");
   radar.pushSprite(0,0);
 }
 
@@ -157,6 +174,7 @@ void loop() {
   if (now-lastImu >= 20) {
     float dt = min((now-lastImu)/1000.0f,0.1f); lastImu = now;
     if (M5.Imu.update()) {
+      lastImuSample = now;
       auto data = M5.Imu.getImuData();
       float ar = atan2f(data.accel.y,data.accel.z)*RAD_TO_DEG;
       float ap = atan2f(-data.accel.x,sqrtf(data.accel.y*data.accel.y+data.accel.z*data.accel.z))*RAD_TO_DEG;
