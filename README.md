@@ -45,6 +45,14 @@ USB データケーブルで CoreS3 を接続します。書き込みポート�
 
 画面は機首を上にしたレーダー（半径 600 m）。黄色の点がリングです。高さはレーダーではなく PC の画面で確認します。スコア・速度・高度も表示。2 秒間データが届かないと `Waiting for game...` と姿勢を表示します。USB を抜くとキーボードに戻ります。IMU データが 0.5 秒途切れると傾き操作を無効化します。キーボードは接続中も利用できます。
 
+### Fedora (GNOME) での注意
+
+- CoreS3 / CoreS3-Lite のどちらでも同じファームウェアで動きます（どちらも BMI270 IMU 搭載。CoreS3-SE は IMU 非搭載のため非対応）。
+- ブラウザは RPM 版の Google Chrome または Chromium（`sudo dnf install chromium`）を使ってください。Flatpak 版はサンドボックスのためシリアルポートにアクセスできないことがあります。
+- シリアルポート権限: `sudo usermod -aG dialout $USER` を実行し、一度ログアウト→ログインします。`ls -l /dev/ttyACM*` でグループが `dialout` であることを確認できます。
+- PlatformIO の書き込みで権限エラーが出る場合は [udev ルール](https://docs.platformio.org/en/latest/core/installation/udev-rules.html) を追加してください。
+- ModemManager がポートを掴んで接続が不安定な場合は `sudo systemctl stop ModemManager` を試してください。
+
 ## シリアルプロトコル v1
 
 USB CDC、115200 baud、UTF-8 / ASCII、**1 行に 1 個の JSON + LF**（受信は CRLF も可）。起動ログ、不正 JSON、不明な種類は無視します。
