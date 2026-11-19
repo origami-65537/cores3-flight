@@ -10,7 +10,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <div class="reticle"><span>┌</span> + <span>┐</span></div><div id="notice" role="status">READY FOR TAKEOFF</div>
 <div id="warning" role="status" hidden></div><div id="ring-guide" hidden><span class="guide-symbol">◇</span><span class="guide-distance"></span></div><div id="crash-flash"></div>
 <div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">光のリングをくぐろう<small>Fly through the glowing rings</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>Shift / Space</kbd> ブースト · Boost</li><li><kbd>R</kbd> リスタート · Restart</li></ul><p>地面・岩柱に衝突するとフライト終了。<br>Ground & rock pillars end the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
-<footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>SHIFT / SPACE</kbd> Boost</span></div><div class="actions"><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button><button id="fullscreen" type="button" aria-pressed="false" hidden>⛶ 全画面</button></div></footer>`;
+<footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>SHIFT / SPACE</kbd> Boost</span></div><div class="actions"><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button><button id="fullscreen" type="button" aria-pressed="false" hidden>全画面</button></div></footer>`;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#a6d2df'); scene.fog = new THREE.Fog('#a6d2df',280,1400);
 const renderer = new THREE.WebGLRenderer({antialias:true});
@@ -153,7 +153,7 @@ fullscreen.onclick=async () => {
 document.addEventListener('fullscreenchange',() => {
   const active=!!document.fullscreenElement;
   fullscreen.setAttribute('aria-pressed',String(active));
-  fullscreen.textContent=active?'⛶ 全画面を終了':'⛶ 全画面';
+  fullscreen.textContent=active?'全画面を終了':'全画面';
   resizeRenderer();
 });
 function showText(element:HTMLElement,value:string) {
