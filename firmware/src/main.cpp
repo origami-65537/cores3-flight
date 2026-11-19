@@ -164,7 +164,7 @@ void drawRadar(uint32_t now) {
 void setup() {
   auto cfg = M5.config(); M5.begin(cfg);
   Serial.begin(115200);
-  M5.Display.setRotation(1); radar.setColorDepth(16); radar.createSprite(320,240);
+  M5.Display.setRotation(0); radar.setColorDepth(16); radar.createSprite(320,240);
   line.reserve(2048); lastImu = millis();
   startNetwork();
 }
