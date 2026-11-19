@@ -6,7 +6,7 @@ import { ringGuidePlacement } from './guide-layout';
 import './style.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-<header><div class="brand"><span class="mark">↗</span><div>空路 <span class="latin">SKYLINE</span><small>CORES3 FLIGHT LAB / 01</small></div></div><div class="connection"><i></i><span id="status">キーボード / Keyboard ready</span><button id="connect">USBで接続 ↗</button><button id="wifi">Wi-Fiで接続 ↗</button></div></header>
+<header><div class="brand"><span class="mark">↗</span><div>空路 <span class="latin">SKYLINE</span><small>CORES3 FLIGHT LAB / 01</small></div></div><div class="connection"><i></i><span id="status">キーボード / Keyboard ready</span><span id="imu"></span><button id="connect">USBで接続 ↗</button><button id="wifi">Wi-Fiで接続 ↗</button></div></header>
 <aside class="mission"><div class="eyebrow">RING RUN · リングコース</div><h1>風をつかまえよう。</h1><p>金色のリングに照準を合わせよう。</p><div class="tag">◉ &nbsp; RING +100 PTS &nbsp; / &nbsp; 地面に注意</div></aside>
 <section class="instruments"><div><label>SCORE / スコア</label><strong id="score">0000</strong></div><div><label>AIRSPEED</label><strong><span id="speed">0</span><em>m/s</em></strong></div><div><label>ALTITUDE</label><strong><span id="alt">0</span><em>m</em></strong></div><div><label>FLIGHT TIME</label><strong id="time">00:00</strong></div></section>
 <div class="reticle" aria-hidden="true">⊕</div><div id="notice" role="status"></div>
@@ -113,6 +113,7 @@ el('wifi').onclick=()=>{
 const servedByDevice=wifiTarget(location);
 if (location.protocol==='http:' && 'url' in servedByDevice) {wifiUrl=servedByDevice.url; void connectWifi(wifiUrl,true);}
 setInterval(()=>{if(wifiUrl && !device.connected) void connectWifi(wifiUrl,true);},3000);
+setInterval(()=>{const t=device.telemetry(); el('imu').textContent=device.connected?(t.hz?`傾き R${t.roll.toFixed(0)}° P${t.pitch.toFixed(0)}° · ${t.hz}Hz`:'姿勢データなし / No IMU data'):'';},250);
 device.onCalibration=ready=>flash(ready?'センター設定 / Calibrated':'姿勢をキープ / Hold still to center');
 function center() {
   if (!device.calibrate()) flash(device.connected?'姿勢データ待ち / Waiting for motion data':'CoreS3 を接続してください / Connect CoreS3 first');
