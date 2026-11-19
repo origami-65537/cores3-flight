@@ -1,13 +1,17 @@
 import { FEEL } from './feel';
+import { FlickDetector, type Gesture } from './stunts';
 
 export interface Controls { pitch: number; roll: number; yaw?: number; throttle: number; boost: boolean }
 export interface InputSource { sample(dt: number): Controls }
 export const neutral = (): Controls => ({pitch:0, roll:0, throttle:0, boost:false});
-export interface Imu { t: 'imu'; r: number; p: number; y: number; b: number }
+/** gx, gy and gz are angular velocity in degrees per second; firmware older than the stunt update omits them. */
+export interface Imu { t: 'imu'; r: number; p: number; y: number; b: number; gx?: number; gy?: number; gz?: number }
 export function parseImu(line: string): Imu | null {
   try {
     const v = JSON.parse(line);
-    return v?.t === 'imu' && ['r','p','y','b'].every(k => typeof v[k] === 'number' && Number.isFinite(v[k])) && Number.isInteger(v.b) && v.b >= 0 && v.b <= 3 ? v : null;
+    const numbers = (keys:string[]) => keys.every(k => typeof v[k] === 'number' && Number.isFinite(v[k]));
+    const rates = ['gx','gy','gz'];
+    return v?.t === 'imu' && numbers(['r','p','y','b']) && Number.isInteger(v.b) && v.b >= 0 && v.b <= 3 && (numbers(rates) || rates.every(k => v[k] === undefined)) ? v : null;
   } catch { return null; }
 }
 export function axis(degrees: number): number {
@@ -48,6 +52,8 @@ export class CoreS3 implements InputSource {
   private last?: number;
   private busy = false;
   private frames: number[] = [];
+  private detector = new FlickDetector();
+  private flicks: Gesture[] = [];
   connected = false;
   onStatus: (s:string) => void = () => {};
   onCalibration: (ready:boolean) => void = () => {};
@@ -71,7 +77,7 @@ export class CoreS3 implements InputSource {
     const interrupted = this.last !== undefined && now-this.last > IMU_TIMEOUT_MS;
     this.imu = msg; this.last = now;
     this.frames.push(now); while (this.frames.length && now-this.frames[0] > 1000) this.frames.shift();
-    if (interrupted) this.filtered = neutral();
+    if (interrupted) { this.filtered = neutral(); this.detector.reset(); }
     if (first || recenter || (interrupted && this.centering)) this.startCentering(now);
     const capture = this.centering;
     if (capture) {
@@ -83,7 +89,18 @@ export class CoreS3 implements InputSource {
         this.centering = undefined;
         this.onCalibration(true);
       }
-    }
+      this.detector.reset();
+    } else if (msg.gx !== undefined && msg.gy !== undefined) {
+      const {roll,pitch} = this.flightTilt();
+      const gesture = this.detector.update({t:now, roll, pitch, rollRate:msg.gy, pitchRate:msg.gx});
+      if (gesture) this.flicks.push(gesture);
+    } else this.detector.reset();
+  }
+  /** Flicks detected since the last call. */
+  gestures() { return this.flicks.splice(0); }
+  flickDebug() {
+    const {armed,progress,last,rejected,counts} = this.detector;
+    return {supported:this.imu.gx !== undefined, rollRate:this.imu.gy ?? 0, pitchRate:this.imu.gx ?? 0, centering:!!this.centering, armed, progress, last, rejected, counts};
   }
   connectWifi(url: string) {
     if (this.connected) return Promise.resolve();

@@ -2,6 +2,10 @@ import { test, type TestContext } from 'node:test';
 import { strict as a } from 'node:assert';
 import { CoreS3, parseImu, axis, neutral, wifiTarget } from './input';
 test('firmware IMU frame and button mask', () => { a.deepEqual(parseImu('{"t":"imu","r":12.5,"p":-3,"y":90,"b":3}'), {t:'imu',r:12.5,p:-3,y:90,b:3}); });
+test('firmware IMU frame with angular velocity', () => {
+  a.deepEqual(parseImu('{"t":"imu","r":12.5,"p":-3,"y":90,"b":1,"gx":-310.4,"gy":12,"gz":0.5}'), {t:'imu',r:12.5,p:-3,y:90,b:1,gx:-310.4,gy:12,gz:.5});
+  for (const line of ['{"t":"imu","r":0,"p":0,"y":0,"b":0,"gx":1,"gy":2}','{"t":"imu","r":0,"p":0,"y":0,"b":0,"gx":"1","gy":2,"gz":3}','{"t":"imu","r":0,"p":0,"y":0,"b":0,"gx":null,"gy":2,"gz":3}']) a.equal(parseImu(line),null);
+});
 test('empty, malformed and unexpected serial lines', () => { for (const line of ['', 'boot message', '{}','{"t":"radar"}','{"t":"imu","r":null,"p":0,"y":0,"b":0}','{"t":"imu","r":0,"p":0,"y":0,"b":4}']) a.equal(parseImu(line),null); });
 test('deadzone and normalized bounds', () => { a.equal(axis(0),0); a.equal(axis(1),0); a.equal(axis(90),1); a.equal(axis(-90),-1); a.ok(axis(15)>0 && axis(15)<1); });
 test('Wi-Fi WebSocket target', () => {
@@ -138,8 +142,42 @@ test('a stale stream falls back to neutral and a resumed stream does not replay 
   });
 });
 
+test('device flicks become gestures once, and never while centering or on firmware without angular velocity', async t => {
+  await withSerial(t, async ({ device, frame, calibrations }) => {
+    const move = async (r:number, p:number, to:{r:number,p:number}, gyro=true) => {
+      // 140 ms swing sampled at 50 Hz; device r is game pitch and device p is game roll.
+      for (let i = 1; i <= 7; i++) {
+        const k = i/7, e = k*k*(3-2*k), d = 6*k*(1-k)/.14;
+        await frame(r+(to.r-r)*e, p+(to.p-p)*e, 0, gyro ? {gx:(to.r-r)*d, gy:(to.p-p)*d, gz:0} : undefined);
+      }
+    };
+    const rest = async (r:number, p:number, gyro=true) => { for (let i = 0; i < 10; i++) await frame(r, p, 0, gyro ? {gx:0,gy:0,gz:0} : undefined); };
+    await rest(17, -12); await rest(17, -12);
+    a.deepEqual(calibrations, [false, true]);
+    a.equal(device.flickDebug().supported, true);
+    await move(17, -12, {r:72,p:-12});
+    a.deepEqual(device.gestures(), ['pull']);
+    a.deepEqual(device.gestures(), []);
+    await move(72, -12, {r:17,p:-12}); await rest(17, -12);
+    await move(17, -12, {r:17,p:-67}); await move(17, -67, {r:17,p:-12});
+    a.deepEqual(device.gestures(), ['twistLeft']);
+    await rest(17, -12);
+    await move(17, -12, {r:-38,p:-12});
+    a.deepEqual(device.gestures(), ['push']);
+    a.deepEqual(device.flickDebug().counts, {twistLeft:1,twistRight:0,pull:1,push:1});
+    await move(-38, -12, {r:17,p:-12}); await rest(17, -12, false);
+    await move(17, -12, {r:72,p:-12}, false);
+    a.deepEqual(device.gestures(), []);
+    a.equal(device.flickDebug().supported, false);
+    await move(72, -12, {r:17,p:-12}); await rest(17, -12);
+    a.equal(device.calibrate(), true);
+    await move(17, -12, {r:72,p:-12});
+    a.deepEqual(device.gestures(), []);
+  });
+});
+
 async function withSerial(t: TestContext, run: (fixture: {
-  device: CoreS3; frame: (r:number,p:number,b?:number) => Promise<void>; advance: (ms:number) => void; calibrations:boolean[];
+  device: CoreS3; frame: (r:number,p:number,b?:number,gyro?:{gx:number,gy:number,gz:number}) => Promise<void>; advance: (ms:number) => void; calibrations:boolean[];
 }) => Promise<void>) {
   let now = 0;
   t.mock.method(performance, 'now', () => now);
@@ -155,9 +193,9 @@ async function withSerial(t: TestContext, run: (fixture: {
   device.onCalibration = ready => calibrations.push(ready);
   try {
     await device.connect();
-    await run({ device, calibrations, advance: ms => { now += ms; }, async frame(r,p,b=0) {
+    await run({ device, calibrations, advance: ms => { now += ms; }, async frame(r,p,b=0,gyro) {
       now += 20;
-      controller.enqueue(encoder.encode(JSON.stringify({t:'imu', r, p, y:0, b})+'\n'));
+      controller.enqueue(encoder.encode(JSON.stringify({t:'imu', r, p, y:0, b, ...gyro})+'\n'));
       await Promise.resolve();
     } });
   } finally {

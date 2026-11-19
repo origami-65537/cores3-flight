@@ -22,6 +22,10 @@ npm run dev
 | A / ←、D / → | 左右バンク（傾けると旋回） |
 | Q、E | スロットルを下げる、上げる |
 | Shift / Space | 押している間ブースト |
+| J、L | バレルロール 左、右（+100） |
+| I | ループ（+300、35 m/s 未満では失速） |
+| K | スプリットS（+250、反転して高度 −40 m） |
+| G | フリック判定のデバッグ表示を切り替え |
 | R | リセット（スコア・時間も初期化） |
 | C | CoreS3 のセンター合わせ |
 | M | Mute / unmute audio |
@@ -89,15 +93,51 @@ USB の Web Serial は Chrome / Edge 専用ですが、Wi-Fi なら Firefox で�
 
 WebSocket では 1 テキストフレームに 1 個の JSON（改行なし）を、シリアルプロトコル v1 と同じ内容でやりとりします。
 
+## スタント（フリック操作）
+
+飛行中に CoreS3 をすばやく振ると、通常の飛行モデルの上に決まった動きのスタントが再生されます。スタント中は操縦を受け付けず、終わると通常の操縦に戻ります。点数はスタントを最後まで決めたときに入ります。
+
+| 操作 | キー | スタント | 点 | 内容 |
+| --- | --- | --- | --- | --- |
+| 左右にすばやくひねって戻す | J / L | バレルロール | 100 | 0.7 秒で 1 回転、高度 −3 m |
+| 手前にすばやく引く | I | ループ | 300 | 2 秒の宙返り。35 m/s 未満では失速して約 35 m 落下（0 点） |
+| 奥へすばやく押す | K | スプリットS | 250 | 1.6 秒で反転して逆方向へ。高度 −40 m（低高度では墜落） |
+
+フリックは角速度 250°/s 以上で、ひねりは 40°、引く・押すは 45° 以上振ったときに成立します。ひねりは 0.3 秒以内に戻したときだけ成立するので、傾けたままの旋回はスタントになりません。次のフリックは本体をニュートラル付近（20° 以内）に戻してから受け付けます。しきい値は `web/src/stunts.ts` の `STUNT.flick` にまとめてあります。
+
+CoreS3 を接続すると画面左下に **FLICK DEBUG** が表示されます（G で切り替え）。現在の傾きと角速度（ピーク保持）、判定状態（READY / TRACKING / WAIT）、最後に成立したフリックの角速度と振り幅、種類ごとの回数、不成立の理由（`reject`）を確認できます。`ファームウェア更新が必要` と表示される場合は、角速度を送らない古いファームウェアです。下記の手順で書き込み直してください（操縦は古いファームウェアでも動きます）。
+
+### ファームウェアの更新（この版では必須）
+
+フリック判定（角速度 `gx` / `gy` / `gz`）と本体のブースト / PULL UP 音は新しいファームウェアが必要です。1 回の書き込みで両方入ります。
+
+USB で遊ぶ場合:
+```sh
+git pull
+cd firmware
+pio run -t upload
+```
+
+Wi-Fi で遊ぶ場合（本体が配信するゲーム画面も更新します。`firmware/include/wifi_config.h` はそのまま使えます）:
+```sh
+git pull
+cd web && npm ci && npm run build:device
+cd ../firmware && pio run -t upload && pio run -t uploadfs
+```
+
+書き込み前にゲームのタブとシリアルモニターを閉じてください。ポートが複数ある場合は `--upload-port /dev/ttyACM0` のように指定します。書き込み後、USB は https://origami-65537.github.io/cores3-flight/ で「USBで接続」、Wi-Fi は http://cores3-flight.local/ を開き、FLICK DEBUG が `READY` になることを確認します。
+
 ## シリアルプロトコル v1
 
 USB CDC、115200 baud、UTF-8 / ASCII、**1 行に 1 個の JSON + LF**（受信は CRLF も可）。起動ログ、不正 JSON、不明な種類は無視します。
 
 CoreS3 → PC、約 50 Hz:
 ```json
-{"t":"imu","r":5.2,"p":-3.1,"y":12.0,"b":1}
+{"t":"imu","r":5.2,"p":-3.1,"y":12.0,"b":1,"gx":-4.2,"gy":310.5,"gz":0.8}
 ```
 `r` は本体の X 軸まわりの角度（上辺が上がると正、ゲームではピッチ）、`p` は本体の Y 軸まわりの角度（右辺が下がると正、ゲームではバンク）。どちらも度単位の加速度・ジャイロの相補フィルター出力です。`y` はヨー（度、ジャイロ積分・ドリフトあり、操縦には不使用）。`b` はビットマスク: bit0=ブースト、bit1=センター合わせ。PC は bit1 の立ち上がりを検出すると短時間の姿勢データを平均してセンターを決めます。
+
+`gx` / `gy` / `gz` は本体の X / Y / Z 軸まわりの角速度（度/秒、フィルターなしのジャイロ値）で、`gx` は `r`、`gy` は `p` と同じ向きです。ゲームはフリックの速さの判定に使い、向きは `r` / `p` の変化から決めます。3 つとも無いフレーム（旧ファームウェア）も受け付けますが、フリックは無効になります。
 
 PC → CoreS3、約 10 Hz:
 ```json
@@ -126,8 +166,8 @@ pio run -t buildfs
 
 English: a 40-ring arcade flight course with keyboard or CoreS3 motion controls. Aim at the gold ring, use the bearing arrow if you lose sight of it, and keep flying after a miss. Avoid terrain and press R to retry. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.
 
-The UI fonts in `web/public/fonts/` are SIL OFL subsets of Space Grotesk (Latin) and Noto Sans JP (Japanese game text). Update the Japanese subset when adding new UI characters.
+The UI fonts in `web/public/fonts/` are SIL OFL subsets of Space Grotesk (Latin) and Noto Sans JP (Japanese game text). Update the Japanese subset when adding new UI characters: `pyftsubset 'NotoSansJP[wght].ttf' --text-file=chars.txt --flavor=woff2 --output-file=web/public/fonts/NotoSansJP-UI.woff2` (fonttools and brotli), with every Japanese character used in `web/src` and `web/index.html` in `chars.txt`.
 
 ### Playtest without hardware
 
-On the game page, run the contents of [the mock serial device](web/fixtures/cores3-serial.js) in DevTools before clicking Connect. It streams the firmware's 50 Hz newline JSON with a non-level grip, a short boot delay, and small deterministic noise and drift. After centering, add to `coreS3Sim.rightEdgeDown` to bank right or subtract to bank left; add to `coreS3Sim.topEdgeUp` to pitch up or subtract to pitch down (degrees). Set `coreS3Sim.buttons` to 1 for boost, 2 for center, or 0 to release. Set `coreS3Sim.paused` to test stale input and inspect `coreS3Sim.radar` for the game's telemetry. Reload to restore normal Web Serial.
+On the game page, run the contents of [the mock serial device](web/fixtures/cores3-serial.js) in DevTools before clicking Connect. It streams the firmware's 50 Hz newline JSON with a non-level grip, a short boot delay, and small deterministic noise and drift. After centering, add to `coreS3Sim.rightEdgeDown` to bank right or subtract to bank left; add to `coreS3Sim.topEdgeUp` to pitch up or subtract to pitch down (degrees). Set `coreS3Sim.buttons` to 1 for boost, 2 for center, or 0 to release. Set `coreS3Sim.paused` to test stale input and inspect `coreS3Sim.radar` for the game's telemetry. Call `coreS3Sim.flick('twistLeft')`, `'twistRight'`, `'pull'` or `'push'` to play a 55-degree flick with matching `gx` / `gy`, and set `coreS3Sim.legacyFirmware = true` to drop the angular velocity fields like firmware from before the stunt update. Reload to restore normal Web Serial.
