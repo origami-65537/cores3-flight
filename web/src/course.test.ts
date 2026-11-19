@@ -27,9 +27,11 @@ test('a forward crossing scores at the interpolated point inside the opening', (
   assert.equal(crossGate(gate, {x:0,y:50,z:0}, {x:0,y:50,z:-1}), null);
 });
 
-test('obstacle clearance covers the route between gates, not just the rings', () => {
-  const gates = buildCourse();
-  const z = (launch.z+gates[0].z)/2;
+test('obstacle clearance protects the practice area and the route between gates', () => {
+  const gates = [{x:0,y:65,z:-550,radius:22},{x:0,y:65,z:-800,radius:22}];
+  assert.equal(isNearCourse(gates,470,launch.z,20), true);
+  assert.equal(isNearCourse(gates,550,launch.z,20), false);
+  const z = (gates[0].z+gates[1].z)/2;
   assert.equal(isNearCourse(gates, 43, z, 20), true);
   assert.equal(isNearCourse(gates, 55, z, 20), false);
   assert.equal(isNearCourse(gates, gates.at(-1)!.x, gates.at(-1)!.z, 20), true);

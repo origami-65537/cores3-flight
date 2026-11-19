@@ -2,6 +2,7 @@ export interface Point { x: number; y: number; z: number }
 export interface Gate extends Point { radius: number }
 
 export const launch: Readonly<Point> = {x:0, y:65, z:70};
+const practiceRadius = 480;
 
 export function buildCourse(): Gate[] {
   let z = -125;
@@ -27,6 +28,7 @@ export function crossGate(gate: Gate, from: Point, to: Point): 'hit' | 'miss' | 
 }
 
 export function isNearCourse(gates: readonly Gate[], x: number, z: number, radius: number): boolean {
+  if (Math.hypot(x-launch.x,z-launch.z) < radius+practiceRadius) return true;
   let from: Point = launch;
   for (const gate of gates) {
     const dx = gate.x-from.x, dz = gate.z-from.z;
