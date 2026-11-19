@@ -1,6 +1,6 @@
 # 空路 / SKYLINE — CoreS3 Flight
 
-M5Stack CoreS3 を傾けて、PC の空を飛ぶ小さな 3D フライトゲーム。デバイスなしでもキーボードだけで全機能を遊べます。前進は自動。光るリングをくぐると +100 点、地面・岩柱への衝突でフライト終了です。追従カメラで自由に探索できます。
+M5Stack CoreS3 を傾けて、PC の空を飛ぶ小さな 3D フライトゲーム。デバイスなしでもキーボードだけで遊べます。前進は自動。40 個のリングを順番に狙い、くぐると +100 点。地面・岩柱への衝突でフライト終了です。
 
 ## ブラウザで遊ぶ
 
@@ -25,7 +25,7 @@ npm run dev
 | R | リセット（スコア・時間も初期化） |
 | C | CoreS3 のセンター合わせ |
 
-画面下のボタンでもリセット・センター合わせができます。最初のリングはほぼ正面。高度を保ち、少しずつ旋回して挑戦してください。
+画面下のボタンでもリセット・センター合わせができます。金色が次のリングです。画面上部の矢印と距離を頼りに、照準をリングの中心へ合わせてください。リングを逃しても次に進めます。コース後半はリングが小さく、カーブが大きくなります。
 
 ## CoreS3 の準備と接続
 
@@ -103,4 +103,4 @@ pio run -t buildfs
 
 `web/` は Vite + TypeScript + three.js、`firmware/` は PlatformIO + Arduino + M5Unified + ArduinoJson。CI は両方をビルドします。main への push で GitHub Pages に自動デプロイ（管理者権限・リポジトリの Pages 利用許可が必要）。Vite の base は `./`。本体無しでもブラウザ版は動きますが、実機の IMU 軸・タッチ・USB は実機での最終調整を推奨します。
 
-English: an arcade flight playground with keyboard or CoreS3 motion controls. Fly through rings, avoid terrain, and press R to restart. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.
+English: a 40-ring arcade flight course with keyboard or CoreS3 motion controls. Aim at the gold ring, use the bearing arrow if you lose sight of it, and keep flying after a miss. Avoid terrain and press R to retry. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.
