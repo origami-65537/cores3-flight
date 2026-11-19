@@ -36,7 +36,18 @@ String line;
 
 void handleRadar(const String &message) {
   JsonDocument doc;
-  if (!deserializeJson(doc, message) && doc["t"] == "radar" && doc["h"].is<float>() && doc["o"].is<JsonArray>()) {
+  if (deserializeJson(doc, message)) return;
+  if (doc["t"] == "sfx") {
+    static uint32_t lastSfx = 0;
+    const uint32_t now = millis();
+    if (now-lastSfx < 300) return;
+    if (doc["s"] == "boost" || doc["s"] == "pullup") {
+      lastSfx = now;
+      M5.Speaker.tone(doc["s"] == "boost" ? 880 : 440, 90);
+    }
+    return;
+  }
+  if (doc["t"] == "radar" && doc["h"].is<float>() && doc["o"].is<JsonArray>()) {
     heading = doc["h"].as<float>();
     targetCount = 0;
     for (JsonArray point : doc["o"].as<JsonArray>()) {
@@ -163,6 +174,7 @@ void drawRadar(uint32_t now) {
 
 void setup() {
   auto cfg = M5.config(); M5.begin(cfg);
+  M5.Speaker.setVolume(48);
   Serial.begin(115200);
   Serial.setTxTimeoutMs(0);
   M5.Display.setRotation(0); radar.setColorDepth(16); radar.createSprite(320,240);

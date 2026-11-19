@@ -1,3 +1,5 @@
+import { FEEL } from './feel';
+
 export interface Controls { pitch: number; roll: number; yaw?: number; throttle: number; boost: boolean }
 export interface InputSource { sample(dt: number): Controls }
 export const neutral = (): Controls => ({pitch:0, roll:0, throttle:0, boost:false});
@@ -146,7 +148,7 @@ export class CoreS3 implements InputSource {
     if (!this.connected || this.last === undefined || performance.now()-this.last > IMU_TIMEOUT_MS) return neutral();
     const boost = !!(this.imu.b&1);
     if (this.centering) return {...neutral(),boost};
-    const blend = 1-Math.exp(-dt*10);
+    const blend = 1-Math.exp(-dt*FEEL.response.device);
     const {roll,pitch} = this.flightTilt();
     this.filtered.pitch += (axis(pitch)-this.filtered.pitch)*blend;
     this.filtered.roll += (axis(roll)-this.filtered.roll)*blend;

@@ -24,6 +24,7 @@ npm run dev
 | Shift / Space | 押している間ブースト |
 | R | リセット（スコア・時間も初期化） |
 | C | CoreS3 のセンター合わせ |
+| M | Mute / unmute audio |
 
 最初はブリーフィング中で飛行・時間は停止しています。Enter / Space またはカードのクリックで離陸します (Take off)。地面・岩柱への衝突でフライト終了。結果画面では R / Enter でリトライでき、すぐに飛行が始まります。
 
@@ -104,7 +105,11 @@ PC → CoreS3、約 10 Hz:
 ```
 `h` は機首角（度）。0° は世界の -Z、正は左旋回、前方ベクトルは `[-sin(h), -cos(h)]`。`o` はプレイヤーから見た世界座標差 `[dx,dz]`（m）の配列。距離 1200 m 内、近い順、最大 16 個、空なら `[]`。デバイス側で機首方向へ回転して表示します。`score` は点数、`speed` は m/s、`alt` は地上からの m。受信行は最大 2048 文字（PC の入力は 4096 文字まで）。
 
+PC → CoreS3 event cues (USB and WebSocket): `{"t":"sfx","s":"boost"}` on boost start, or `{"t":"sfx","s":"pullup"}` when PULL UP begins (2-second warning cooldown). Firmware accepts only these names, rate-limits cues to 300 ms, and queues a modest-volume 90 ms speaker tone without blocking the IMU loop.
+
 ## 開発・確認
+
+Game-feel tuning lives in `web/src/feel.ts` (`FEEL`): camera, response, audio, rewards, near misses, and scenery. Audio starts on takeoff; **M** toggles mute.
 
 ```sh
 cd web
