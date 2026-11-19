@@ -70,12 +70,16 @@ el('wifi').onclick=()=>{
 const servedByDevice=wifiTarget(location);
 if (location.protocol==='http:' && 'url' in servedByDevice) {wifiUrl=servedByDevice.url; void connectWifi(wifiUrl,true);}
 setInterval(()=>{if(wifiUrl && !device.connected) void connectWifi(wifiUrl,true);},3000);
-el('center').onclick=()=>{device.calibrate(); flash('センター設定 / Calibrated');};
+device.onCalibration=ready=>flash(ready?'センター設定 / Calibrated':'姿勢をキープ / Hold still to center');
+function center() {
+  if (!device.calibrate()) flash(device.connected?'姿勢データ待ち / Waiting for motion data':'CoreS3 を接続してください / Connect CoreS3 first');
+}
+el('center').onclick=center;
 let heading=0,pitch=0,bank=0,speed=42,throttle=.45,score=0,elapsed=0,crashed=false,noticeUntil=0;
 const position=new THREE.Vector3(0,65,70);
 function flash(s:string) {el('notice').textContent=s; noticeUntil=performance.now()+2200;}
 function reset() { position.set(0,65,70); heading=pitch=bank=score=elapsed=0; speed=42; throttle=.45; crashed=false; rings.forEach(r=>r.visible=true); flash('新しいフライト / Let’s fly'); }
-el('reset').onclick=reset; window.addEventListener('keydown',e=>{if(e.code==='KeyR')reset(); if(e.code==='KeyC')device.calibrate();});
+el('reset').onclick=reset; window.addEventListener('keydown',e=>{if(e.code==='KeyR')reset(); if(e.code==='KeyC' && !e.repeat)center();});
 const clock=new THREE.Clock(); let radarTimer=0;
 function animate() {
   requestAnimationFrame(animate); const dt=Math.min(clock.getDelta(),.05);

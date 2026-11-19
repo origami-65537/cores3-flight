@@ -32,21 +32,54 @@ export class Keyboard implements InputSource {
   }
 }
 interface Port { readable: ReadableStream<Uint8Array> | null; writable: WritableStream<Uint8Array> | null; open(o:{baudRate:number}):Promise<void>; close():Promise<void> }
+const IMU_TIMEOUT_MS = 500;
+const CENTER_WINDOW_MS = 180;
+const relativeRoll = (roll:number, center:number) => ((roll-center+180)%360+360)%360-180;
 export class CoreS3 implements InputSource {
   private port?: Port;
   private writer?: WritableStreamDefaultWriter<Uint8Array>;
   private socket?: WebSocket;
   private imu: Imu = {t:'imu',r:0,p:0,y:0,b:0};
   private center = {r:0,p:0};
+  private centering?: { started:number; anchor:number; r:number; p:number; count:number };
   private filtered = neutral();
-  private last = 0;
+  private last?: number;
   private busy = false;
   connected = false;
   onStatus: (s:string) => void = () => {};
-  calibrate() { this.center = {r:this.imu.r,p:this.imu.p}; }
-  private receive(line: string) {
+  onCalibration: (ready:boolean) => void = () => {};
+  calibrate() {
+    const now = performance.now();
+    if (!this.connected || this.last === undefined || now-this.last > IMU_TIMEOUT_MS) return false;
+    this.startCentering(now);
+    return true;
+  }
+  private startCentering(now:number) {
+    this.centering = {started:now,anchor:this.imu.r,r:0,p:0,count:0};
+    this.filtered = neutral();
+    this.onCalibration(false);
+  }
+  private receive(line:string) {
     const msg = parseImu(line);
-    if (msg) { const recenter = (msg.b & 2) && !(this.imu.b & 2); this.imu = msg; this.last = performance.now(); if (recenter) this.calibrate(); }
+    if (!msg) return;
+    const now = performance.now();
+    const first = this.last === undefined;
+    const recenter = (msg.b & 2) && !(this.imu.b & 2);
+    const interrupted = this.last !== undefined && now-this.last > IMU_TIMEOUT_MS;
+    this.imu = msg; this.last = now;
+    if (interrupted) this.filtered = neutral();
+    if (first || recenter || (interrupted && this.centering)) this.startCentering(now);
+    const capture = this.centering;
+    if (capture) {
+      capture.r += relativeRoll(msg.r,capture.anchor);
+      capture.p += msg.p;
+      capture.count++;
+      if (capture.count > 1 && now-capture.started >= CENTER_WINDOW_MS) {
+        this.center = {r:capture.anchor+capture.r/capture.count,p:capture.p/capture.count};
+        this.centering = undefined;
+        this.onCalibration(true);
+      }
+    }
   }
   connectWifi(url: string) {
     if (this.connected) return Promise.resolve();
@@ -56,7 +89,7 @@ export class CoreS3 implements InputSource {
       socket.onmessage = e => { if (typeof e.data === 'string') this.receive(e.data); };
       socket.onclose = () => {
         if (this.socket !== socket) { reject(new Error(`${url} に接続できません / Wi-Fi connection failed`)); return; }
-        this.socket = undefined; this.connected = false; this.last = 0;
+        this.socket = undefined; this.connected = false; this.last = undefined;
         this.onStatus('Wi-Fi 切断 / Keyboard mode');
       };
     });
@@ -92,7 +125,7 @@ export class CoreS3 implements InputSource {
     } catch { /* Disconnect falls back to keyboard. */ }
     finally {
       reader?.releaseLock();
-      this.connected = false; this.last = 0;
+      this.connected = false; this.last = undefined;
       try { await this.writer?.close(); } catch { /* Unplugged. */ }
       this.writer?.releaseLock(); this.writer = undefined;
       await port.close().catch(() => {}); this.port = undefined;
@@ -100,11 +133,13 @@ export class CoreS3 implements InputSource {
     }
   }
   sample(dt:number): Controls {
-    if (performance.now()-this.last > 500 || !this.connected) return neutral();
+    if (!this.connected || this.last === undefined || performance.now()-this.last > IMU_TIMEOUT_MS) return neutral();
+    const boost = !!(this.imu.b&1);
+    if (this.centering) return {...neutral(),boost};
     const blend = 1-Math.exp(-dt*10);
     this.filtered.pitch += (axis(this.imu.p-this.center.p)-this.filtered.pitch)*blend;
-    this.filtered.roll += (axis(this.imu.r-this.center.r)-this.filtered.roll)*blend;
-    return {...this.filtered,boost:!!(this.imu.b&1)};
+    this.filtered.roll += (axis(relativeRoll(this.imu.r,this.center.r))-this.filtered.roll)*blend;
+    return {...this.filtered,boost};
   }
   send(data:unknown) {
     if (this.socket) { if (this.socket.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 4096) this.socket.send(JSON.stringify(data)); return; }
