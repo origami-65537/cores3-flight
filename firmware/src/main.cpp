@@ -27,6 +27,7 @@ uint32_t wifiStarted = 0, lastCleanup = 0;
 
 M5Canvas radar(&M5.Display);
 float roll = 0, pitch = 0, yaw = 0, heading = 0;
+float gyroX = 0, gyroY = 0, gyroZ = 0;
 float targets[16][2];
 int targetCount = 0, score = 0, speed = 0, altitude = 0;
 uint32_t lastImu = 0, lastDraw = 0, lastRadar = 0;
@@ -191,14 +192,15 @@ void loop() {
       roll = .98f*(roll+data.gyro.x*dt)+.02f*ar;
       pitch = .98f*(pitch+data.gyro.y*dt)+.02f*ap;
       yaw += data.gyro.z*dt;
+      gyroX=data.gyro.x; gyroY=data.gyro.y; gyroZ=data.gyro.z;
     }
     int buttons = 0;
     for (int i=0; i<M5.Touch.getCount();i++) {
       auto touch = M5.Touch.getDetail(i);
       if (touch.isPressed() && touch.y >= 200) buttons |= touch.x < 160 ? 1 : 2;
     }
-    char imu[96];
-    snprintf(imu,sizeof imu,"{\"t\":\"imu\",\"r\":%.2f,\"p\":%.2f,\"y\":%.2f,\"b\":%d}",roll,pitch,yaw,buttons);
+    char imu[160];
+    snprintf(imu,sizeof imu,"{\"t\":\"imu\",\"r\":%.2f,\"p\":%.2f,\"y\":%.2f,\"b\":%d,\"gx\":%.1f,\"gy\":%.1f,\"gz\":%.1f}",roll,pitch,yaw,buttons,gyroX,gyroY,gyroZ);
     if (socket.count() && socket.availableForWriteAll()) socket.textAll(imu);
     size_t length = strlen(imu);
     if (Serial.availableForWrite() > (int)length) { Serial.write(imu, length); Serial.write('\n'); }
