@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Keyboard, CoreS3, wifiTarget } from './input';
 import { buildCourse, crossGate, isNearCourse, launch } from './course';
 import { RenderQuality } from './render-quality';
+import { ringGuidePlacement } from './guide-layout';
 import './style.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -126,6 +127,7 @@ const previous = new THREE.Vector3(), forward = new THREE.Vector3(), aim = new T
 const reticle = document.querySelector<HTMLElement>('.reticle')!;
 const notice = el('notice'), warning = el('warning');
 const ringGuide = el('ring-guide');
+const placeRingGuide = ringGuidePlacement(ringGuide, document.querySelector<HTMLElement>('.instruments')!);
 const guideSymbol = ringGuide.querySelector<HTMLElement>('.guide-symbol')!;
 const guideDistance = ringGuide.querySelector<HTMLElement>('.guide-distance')!;
 const guideLocal = new THREE.Vector3(), guideProjected = new THREE.Vector3();
@@ -259,8 +261,7 @@ function updateRingGuide(target: THREE.Vector3) {
     const scale=Math.min(halfWidth/Math.max(Math.abs(x),.001),halfHeight/Math.max(Math.abs(y),.001));
     x*=scale; y*=scale;
   }
-  ringGuide.style.left=`${innerWidth/2+x}px`;
-  ringGuide.style.top=`${innerHeight/2+y+(onScreen?30:0)}px`;
+  placeRingGuide(innerWidth/2+x,innerHeight/2+y+(onScreen?30:0));
   guideSymbol.hidden=onScreen;
   guideSymbol.style.transform=onScreen?'':`rotate(${Math.atan2(y,x)}rad)`;
   showText(guideDistance,`NEXT ${nextGate+1}/${course.length} · ${Math.round(target.distanceTo(position))} m`);
