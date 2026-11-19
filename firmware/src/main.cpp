@@ -164,6 +164,7 @@ void drawRadar(uint32_t now) {
 void setup() {
   auto cfg = M5.config(); M5.begin(cfg);
   Serial.begin(115200);
+  Serial.setTxTimeoutMs(0);
   M5.Display.setRotation(0); radar.setColorDepth(16); radar.createSprite(320,240);
   line.reserve(2048); lastImu = millis();
   startNetwork();
@@ -190,8 +191,9 @@ void loop() {
     }
     char imu[96];
     snprintf(imu,sizeof imu,"{\"t\":\"imu\",\"r\":%.2f,\"p\":%.2f,\"y\":%.2f,\"b\":%d}",roll,pitch,yaw,buttons);
-    Serial.printf("%s\n",imu);
     if (socket.count() && socket.availableForWriteAll()) socket.textAll(imu);
+    size_t length = strlen(imu);
+    if (Serial.availableForWrite() > (int)length) { Serial.write(imu, length); Serial.write('\n'); }
   }
   if (now-lastDraw >= 66) {lastDraw=now;drawRadar(now);}
   delay(1);

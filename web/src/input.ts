@@ -45,6 +45,7 @@ export class CoreS3 implements InputSource {
   private filtered = neutral();
   private last?: number;
   private busy = false;
+  private frames: number[] = [];
   connected = false;
   onStatus: (s:string) => void = () => {};
   onCalibration: (ready:boolean) => void = () => {};
@@ -67,6 +68,7 @@ export class CoreS3 implements InputSource {
     const recenter = (msg.b & 2) && !(this.imu.b & 2);
     const interrupted = this.last !== undefined && now-this.last > IMU_TIMEOUT_MS;
     this.imu = msg; this.last = now;
+    this.frames.push(now); while (this.frames.length && now-this.frames[0] > 1000) this.frames.shift();
     if (interrupted) this.filtered = neutral();
     if (first || recenter || (interrupted && this.centering)) this.startCentering(now);
     const capture = this.centering;
@@ -131,6 +133,11 @@ export class CoreS3 implements InputSource {
       await port.close().catch(() => {}); this.port = undefined;
       this.onStatus('切断 / Keyboard mode');
     }
+  }
+  telemetry() {
+    const now = performance.now();
+    const live = this.connected && this.last !== undefined && now-this.last <= IMU_TIMEOUT_MS;
+    return {hz: live ? this.frames.filter(t => now-t <= 1000).length : 0, roll: relativeRoll(this.imu.r,this.center.r), pitch: this.imu.p-this.center.p};
   }
   sample(dt:number): Controls {
     if (!this.connected || this.last === undefined || performance.now()-this.last > IMU_TIMEOUT_MS) return neutral();
