@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { Keyboard, CoreS3 } from './input';
+import { Keyboard, CoreS3, wifiTarget } from './input';
 import './style.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-<header><div class="brand"><span class="mark">↗</span><div>空路 <span class="latin">SKYLINE</span><small>CORES3 FLIGHT LAB / 01</small></div></div><div class="connection"><i></i><span id="status">キーボード / Keyboard ready</span><button id="connect">CoreS3を接続 ↗</button></div></header>
+<header><div class="brand"><span class="mark">↗</span><div>空路 <span class="latin">SKYLINE</span><small>CORES3 FLIGHT LAB / 01</small></div></div><div class="connection"><i></i><span id="status">キーボード / Keyboard ready</span><button id="connect">USBで接続 ↗</button><button id="wifi">Wi-Fiで接続 ↗</button></div></header>
 <aside class="mission"><div class="eyebrow">FREE FLIGHT · 自由飛行</div><h1>風をつかまえよう。</h1><p>光のリングをくぐり、空の道をつなぐ。</p><div class="tag">◉ &nbsp; RING +100 PTS &nbsp; / &nbsp; 地面に注意</div></aside>
 <section class="instruments"><div><label>SCORE / スコア</label><strong id="score">0000</strong></div><div><label>AIRSPEED</label><strong><span id="speed">0</span><em>m/s</em></strong></div><div><label>ALTITUDE</label><strong><span id="alt">0</span><em>m</em></strong></div><div><label>FLIGHT TIME</label><strong id="time">00:00</strong></div></section>
 <div class="reticle"><span>┌</span> + <span>┐</span></div><div id="notice" role="status">READY FOR TAKEOFF</div>
@@ -50,8 +50,26 @@ for(let i=0;i<40;i++) {
 }
 const keyboard = new Keyboard(), device = new CoreS3();
 const el = (id:string) => document.getElementById(id)!;
-device.onStatus=s => {el('status').textContent=s; el('connect').textContent=device.connected?'接続済み ✓':'CoreS3を接続 ↗';};
-el('connect').onclick=async()=> {try {await device.connect();} catch(e) {el('status').textContent=e instanceof Error?e.message:String(e);} };
+const showError=(e:unknown)=>{const s=e instanceof Error?e.message:String(e); el('status').textContent=s; flash(s);};
+let wifiUrl='', wifiBusy=false;
+device.onStatus=s => {el('status').textContent=s; el('connect').textContent=device.connected&&!wifiUrl?'USB接続済み ✓':'USBで接続 ↗'; el('wifi').textContent=device.connected&&wifiUrl?'Wi-Fi接続済み ✓':'Wi-Fiで接続 ↗';};
+el('connect').onclick=async()=> {if(device.connected) return; try {await device.connect(); wifiUrl=''; device.onStatus('CoreS3 USB 接続済み / Connected');} catch(e) {showError(e);} };
+async function connectWifi(url:string, quiet=false) {
+  if (wifiBusy || device.connected) return; wifiBusy=true;
+  try {await device.connectWifi(url); wifiUrl=url; device.onStatus('CoreS3 Wi-Fi 接続済み / Connected');} catch(e) {if(!quiet) showError(e);} finally {wifiBusy=false;}
+}
+el('wifi').onclick=()=>{
+  if (device.connected) return;
+  const ask=location.protocol==='http:' && ['localhost','127.0.0.1','[::1]'].includes(location.hostname);
+  const host=ask ? prompt('CoreS3 のアドレス / CoreS3 address', localStorage.getItem('cores3-host') ?? 'cores3-flight.local') ?? undefined : undefined;
+  if (ask && host===undefined) return;
+  if (host) localStorage.setItem('cores3-host',host);
+  const target=wifiTarget(location,host);
+  if ('error' in target) showError(new Error(target.error)); else void connectWifi(target.url);
+};
+const servedByDevice=wifiTarget(location);
+if (location.protocol==='http:' && 'url' in servedByDevice) {wifiUrl=servedByDevice.url; void connectWifi(wifiUrl,true);}
+setInterval(()=>{if(wifiUrl && !device.connected) void connectWifi(wifiUrl,true);},3000);
 el('center').onclick=()=>{device.calibrate(); flash('センター設定 / Calibrated');};
 let heading=0,pitch=0,bank=0,speed=42,throttle=.45,score=0,elapsed=0,crashed=false,noticeUntil=0;
 const position=new THREE.Vector3(0,65,70);

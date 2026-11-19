@@ -1,6 +1,29 @@
 #include <M5Unified.h>
 #include <ArduinoJson.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <ESPmDNS.h>
+#include <LittleFS.h>
+#include <WiFi.h>
 #include <cmath>
+#include <mutex>
+#if __has_include("wifi_config.h")
+#include "wifi_config.h"
+#endif
+#ifndef WIFI_SSID
+#define WIFI_SSID ""
+#define WIFI_PASSWORD ""
+#endif
+
+constexpr const char *HOSTNAME = "cores3-flight";
+constexpr const char *AP_SSID = "CoreS3-Flight";
+constexpr const char *AP_PASSWORD = "skyline2026";
+AsyncWebServer server(80);
+AsyncWebSocket socket("/ws");
+std::mutex socketMutex;
+String socketLine;
+bool socketPending = false, accessPoint = false, mdnsStarted = false, joined = false;
+uint32_t wifiStarted = 0, lastCleanup = 0;
 
 M5Canvas radar(&M5.Display);
 float roll = 0, pitch = 0, yaw = 0, heading = 0;
@@ -10,35 +33,91 @@ uint32_t lastImu = 0, lastDraw = 0, lastRadar = 0;
 bool received = false, initialized = false, overflow = false;
 String line;
 
+void handleRadar(const String &message) {
+  JsonDocument doc;
+  if (!deserializeJson(doc, message) && doc["t"] == "radar" && doc["h"].is<float>() && doc["o"].is<JsonArray>()) {
+    heading = doc["h"].as<float>();
+    targetCount = 0;
+    for (JsonArray point : doc["o"].as<JsonArray>()) {
+      if (targetCount >= 16) break;
+      if (point.size() == 2 && point[0].is<float>() && point[1].is<float>()) {
+        float x = point[0], z = point[1];
+        if (std::isfinite(x) && std::isfinite(z)) { targets[targetCount][0] = x; targets[targetCount++][1] = z; }
+      }
+    }
+    score = doc["score"] | 0; speed = doc["speed"] | 0; altitude = doc["alt"] | 0;
+    received = std::isfinite(heading); lastRadar = millis();
+  }
+}
+
 void readRadar() {
   int budget = 2048;
   while (Serial.available() && budget-- > 0) {
     char c = Serial.read();
     if (c == '\n') {
-      JsonDocument doc;
-      if (!overflow && !deserializeJson(doc, line) && doc["t"] == "radar" && doc["h"].is<float>() && doc["o"].is<JsonArray>()) {
-        heading = doc["h"].as<float>();
-        targetCount = 0;
-        for (JsonArray point : doc["o"].as<JsonArray>()) {
-          if (targetCount >= 16) break;
-          if (point.size() == 2 && point[0].is<float>() && point[1].is<float>()) {
-            float x = point[0], z = point[1];
-            if (std::isfinite(x) && std::isfinite(z)) { targets[targetCount][0] = x; targets[targetCount++][1] = z; }
-          }
-        }
-        score = doc["score"] | 0; speed = doc["speed"] | 0; altitude = doc["alt"] | 0;
-        received = std::isfinite(heading); lastRadar = millis();
-      }
+      if (!overflow) handleRadar(line);
       line = ""; overflow = false;
     } else if (line.length() < 2048 && !overflow) line += c;
     else { line = ""; overflow = true; }
   }
+  String message;
+  {
+    std::lock_guard<std::mutex> lock(socketMutex);
+    if (!socketPending) return;
+    message = socketLine; socketPending = false;
+  }
+  handleRadar(message);
+}
+
+void onSocket(AsyncWebSocket *, AsyncWebSocketClient *, AwsEventType type, void *arg, uint8_t *data, size_t len) {
+  if (type != WS_EVT_DATA) return;
+  auto *info = static_cast<AwsFrameInfo *>(arg);
+  if (!info->final || info->index != 0 || info->len != len || info->opcode != WS_TEXT || len > 2048) return;
+  std::lock_guard<std::mutex> lock(socketMutex);
+  socketLine = String(reinterpret_cast<const char *>(data), len);
+  socketPending = true;
+}
+
+void startAccessPoint() {
+  WiFi.disconnect(true); WiFi.mode(WIFI_AP);
+  WiFi.softAP(AP_SSID, AP_PASSWORD);
+  accessPoint = true;
+}
+
+void updateWifi(uint32_t now) {
+  if (WiFi.status() == WL_CONNECTED) joined = true;
+  if (!accessPoint && !joined && now - wifiStarted > 15000) startAccessPoint();
+  if (!mdnsStarted && (accessPoint || WiFi.status() == WL_CONNECTED) && MDNS.begin(HOSTNAME)) {
+    MDNS.addService("http", "tcp", 80); mdnsStarted = true;
+  }
+  if (now - lastCleanup > 1000) { lastCleanup = now; socket.cleanupClients(2); }
+}
+
+void startNetwork() {
+  WiFi.setHostname(HOSTNAME);
+  WiFi.mode(WIFI_STA); WiFi.setSleep(false);
+  if (strlen(WIFI_SSID)) { WiFi.begin(WIFI_SSID, WIFI_PASSWORD); wifiStarted = millis(); }
+  else startAccessPoint();
+  bool files = LittleFS.begin(true);
+  socket.onEvent(onSocket);
+  server.addHandler(&socket);
+  if (files) server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html").setCacheControl("no-cache");
+  server.onNotFound([](AsyncWebServerRequest *request) {
+    request->send(404, "text/plain", "Game files not found. Run: cd web && npm run build:device && cd ../firmware && pio run -t uploadfs");
+  });
+  server.begin();
 }
 
 void drawRadar(uint32_t now) {
   radar.fillSprite(0x0828);
   radar.setTextColor(0xDFB6); radar.setTextSize(1);
   radar.setCursor(12, 9); radar.print("SKYLINE / CORES3 RADAR");
+  radar.setCursor(170, 9);
+  if (accessPoint) radar.printf("AP %s", AP_SSID);
+  else if (WiFi.status() == WL_CONNECTED) radar.printf("WiFi %s", WiFi.localIP().toString().c_str());
+  else radar.print("WiFi connecting...");
+  if (socket.count()) radar.print(" *");
+  if (accessPoint) { radar.setCursor(170, 21); radar.printf("PW %s", AP_PASSWORD); radar.setCursor(170, 33); radar.print("http://192.168.4.1/"); }
   const int cx = 112, cy = 115, radius = 79;
   radar.drawCircle(cx, cy, radius, 0x4BEE); radar.drawCircle(cx, cy, radius/2, 0x224B);
   radar.drawLine(cx-radius, cy, cx+radius, cy, 0x224B); radar.drawLine(cx,cy-radius,cx,cy+radius,0x224B);
@@ -70,10 +149,11 @@ void setup() {
   Serial.begin(115200);
   M5.Display.setRotation(1); radar.setColorDepth(16); radar.createSprite(320,240);
   line.reserve(2048); lastImu = millis();
+  startNetwork();
 }
 
 void loop() {
-  M5.update(); readRadar(); uint32_t now = millis();
+  M5.update(); readRadar(); uint32_t now = millis(); updateWifi(now);
   if (now-lastImu >= 20) {
     float dt = min((now-lastImu)/1000.0f,0.1f); lastImu = now;
     if (M5.Imu.update()) {
@@ -90,7 +170,10 @@ void loop() {
       auto touch = M5.Touch.getDetail(i);
       if (touch.isPressed() && touch.y >= 200) buttons |= touch.x < 160 ? 1 : 2;
     }
-    Serial.printf("{\"t\":\"imu\",\"r\":%.2f,\"p\":%.2f,\"y\":%.2f,\"b\":%d}\n",roll,pitch,yaw,buttons);
+    char imu[96];
+    snprintf(imu,sizeof imu,"{\"t\":\"imu\",\"r\":%.2f,\"p\":%.2f,\"y\":%.2f,\"b\":%d}",roll,pitch,yaw,buttons);
+    Serial.printf("%s\n",imu);
+    if (socket.count() && socket.availableForWriteAll()) socket.textAll(imu);
   }
   if (now-lastDraw >= 66) {lastDraw=now;drawRadar(now);}
   delay(1);

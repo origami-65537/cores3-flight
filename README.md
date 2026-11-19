@@ -39,11 +39,30 @@ pio run -t upload
 USB データケーブルで CoreS3 を接続します。書き込みポートが見つからない場合は本体のリセットボタンを長押ししてダウンロードモードへ移行し再実行してください。必要なら `pio run -t upload --upload-port /dev/ttyACM0` のように指定します。Linux ではシリアルポートへのアクセス権（dialout グループ等）も確認してください。
 
 1. シリアルモニターを閉じてから、PC の **Chrome / Edge** でゲームを開きます。Web Serial は HTTPS（Pages）または localhost が必要です。Firefox / Safari はキーボードモードで遊べます。
-2. HUD の「CoreS3を接続」を押し、USB シリアルポートを選択します（115200 baud）。
+2. HUD の「USBで接続」を押し、USB シリアルポートを選択します（115200 baud）。
 3. 本体を自然な姿勢で持って「センター合わせ」。前後の傾きで上昇・下降、左右の傾きでバンクします。最大操作角は約 30°、小さな動きを無視するデッドゾーンと平滑化付きです。
 4. 本体画面の **下部左（BOOST）** を押すとブースト、**下部右（CENTER）** を押すとセンター合わせ。基準姿勢・持ち方で向きが変わるため、飛行前に軽く傾けて操作方向を確認してください。
 
 画面は機首を上にしたレーダー（半径 600 m）。黄色の点がリングです。高さはレーダーではなく PC の画面で確認します。スコア・速度・高度も表示。2 秒間データが届かないと `Waiting for game...` と姿勢を表示します。USB を抜くとキーボードに戻ります。IMU データが 0.5 秒途切れると傾き操作を無効化します。キーボードは接続中も利用できます。
+
+## Wi-Fi で接続（Firefox でも可）
+
+USB の Web Serial は Chrome / Edge 専用ですが、Wi-Fi なら Firefox でも遊べます。CoreS3 が本体内にゲームを保存して配信し、同じページから WebSocket（`ws://<本体>/ws`）で姿勢を送ります。HTTPS の GitHub Pages からは混在コンテンツ制限で `ws://` に接続できないため、Wi-Fi では本体のページ（HTTP）を開きます。
+
+1. 自宅の 2.4 GHz Wi-Fi に参加させる場合は `firmware/include/wifi_config.example.h` を `firmware/include/wifi_config.h` にコピーし、SSID とパスワードを書きます（このファイルは git 管理外）。作らなければ本体が自分のアクセスポイントを起動します。
+2. ゲームとファームウェアを書き込みます（ゲームを更新したときも `uploadfs` を再実行）。
+   ```sh
+   cd web && npm ci && npm run build:device
+   cd ../firmware && pio run -t upload && pio run -t uploadfs
+   ```
+3. 本体画面の右上に接続先が出ます。
+   - `WiFi 192.168.x.x`: PC を同じネットワークにつなぎ、Firefox で **http://cores3-flight.local/**（開けなければ表示された IP）を開きます。
+   - `AP CoreS3-Flight`（`wifi_config.h` なし、または 15 秒で参加できなかった場合）: PC の Wi-Fi を `CoreS3-Flight`（パスワード `skyline2026`）に接続し、**http://192.168.4.1/** を開きます。
+4. ページを開くと自動で Wi-Fi 接続し、HUD に「Wi-Fi接続済み ✓」、本体画面の右上に `*` が付きます。切れても 3 秒ごとに再接続します。あとは USB と同じくセンター合わせ・BOOST・レーダーが使えます。
+
+`npm run dev` のローカル版（http://localhost:5173）からも「Wi-Fiで接続」で本体のアドレス（既定 `cores3-flight.local`）を入力すれば接続できます。USB と Wi-Fi は同時に有効で、USB 給電のまま Wi-Fi で遊んでも構いません。Fedora で `.local` が引けない場合は IP を使うか `sudo dnf install nss-mdns` を確認してください。ファイアウォールは PC 側からの接続なので通常変更不要です。
+
+WebSocket では 1 テキストフレームに 1 個の JSON（改行なし）を、シリアルプロトコル v1 と同じ内容でやりとりします。
 
 ### Fedora (GNOME) での注意
 
@@ -76,10 +95,12 @@ cd web
 npm test
 npm run typecheck
 npm run build
+npm run build:device
 cd ../firmware
 pio run
+pio run -t buildfs
 ```
 
 `web/` は Vite + TypeScript + three.js、`firmware/` は PlatformIO + Arduino + M5Unified + ArduinoJson。CI は両方をビルドします。main への push で GitHub Pages に自動デプロイ（管理者権限・リポジトリの Pages 利用許可が必要）。Vite の base は `./`。本体無しでもブラウザ版は動きますが、実機の IMU 軸・タッチ・USB は実機での最終調整を推奨します。
 
-English: an arcade flight playground with keyboard or CoreS3 motion controls. Fly through rings, avoid terrain, and press R to restart. Chrome/Edge required only for USB Web Serial.
+English: an arcade flight playground with keyboard or CoreS3 motion controls. Fly through rings, avoid terrain, and press R to restart. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.

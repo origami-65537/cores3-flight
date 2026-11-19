@@ -1,3 +1,5 @@
 node_modules/
 dist/
 .pio/
+firmware/include/wifi_config.h
+firmware/data/
