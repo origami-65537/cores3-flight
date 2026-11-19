@@ -7,7 +7,9 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <aside class="mission"><div class="eyebrow">FREE FLIGHT · 自由飛行</div><h1>風をつかまえよう。</h1><p>光のリングをくぐり、空の道をつなぐ。</p><div class="tag">◉ &nbsp; RING +100 PTS &nbsp; / &nbsp; 地面に注意</div></aside>
 <section class="instruments"><div><label>SCORE / スコア</label><strong id="score">0000</strong></div><div><label>AIRSPEED</label><strong><span id="speed">0</span><em>m/s</em></strong></div><div><label>ALTITUDE</label><strong><span id="alt">0</span><em>m</em></strong></div><div><label>FLIGHT TIME</label><strong id="time">00:00</strong></div></section>
 <div class="reticle"><span>┌</span> + <span>┐</span></div><div id="notice" role="status">READY FOR TAKEOFF</div>
-<footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 速度</span><span><kbd>SHIFT</kbd> Boost</span></div><div><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button></div></footer>`;
+<div id="warning" role="status" hidden></div><div id="ring-guide" hidden><span class="guide-symbol">◇</span><span class="guide-distance"></span></div><div id="crash-flash"></div>
+<div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">光のリングをくぐろう<small>Fly through the glowing rings</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>Shift / Space</kbd> ブースト · Boost</li><li><kbd>R</kbd> リスタート · Restart</li></ul><p>地面・岩柱に衝突するとフライト終了。<br>Ground & rock pillars end the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
+<footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>SHIFT / SPACE</kbd> Boost</span></div><div><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button></div></footer>`;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#a6d2df'); scene.fog = new THREE.Fog('#a6d2df',280,1400);
 const renderer = new THREE.WebGLRenderer({antialias:true});
@@ -75,17 +77,36 @@ function center() {
   if (!device.calibrate()) flash(device.connected?'姿勢データ待ち / Waiting for motion data':'CoreS3 を接続してください / Connect CoreS3 first');
 }
 el('center').onclick=center;
+el('app').querySelector('.instruments')!.insertAdjacentHTML('beforeend','<div><label>RINGS</label><strong id="ring-count">0/40</strong></div><div><label>THROTTLE</label><strong><span id="throttle">45</span><em>%</em></strong></div>');
 let heading=0,pitch=0,bank=0,speed=42,throttle=.45,score=0,elapsed=0,crashed=false,noticeUntil=0;
+let started=false;
 const position=new THREE.Vector3(0,65,70);
 function flash(s:string) {el('notice').textContent=s; noticeUntil=performance.now()+2200;}
-function reset() { position.set(0,65,70); heading=pitch=bank=score=elapsed=0; speed=42; throttle=.45; crashed=false; rings.forEach(r=>r.visible=true); flash('新しいフライト / Let’s fly'); }
-el('reset').onclick=reset; window.addEventListener('keydown',e=>{if(e.code==='KeyR')reset(); if(e.code==='KeyC' && !e.repeat)center();});
+function takeoff() {started=true; el('flight-overlay').hidden=true; flash('リングの中心を狙おう · Aim for the ring center');}
+function reset() { position.set(0,65,70); heading=pitch=bank=score=elapsed=0; speed=42; throttle=.45; crashed=false; rings.forEach(r=>r.visible=true); el('crash-flash').classList.remove('active'); takeoff(); }
+function formatTime() {return `${Math.floor(elapsed/60).toString().padStart(2,'0')}:${Math.floor(elapsed%60).toString().padStart(2,'0')}`;}
+function finish(cause:'ground'|'pillar'|'complete') {
+  crashed=true;
+  const title=cause==='ground'?'地面に衝突 / You hit the ground':cause==='pillar'?'岩柱に衝突 / You hit a rock pillar':'全リング達成！ / Perfect flight';
+  const tip=cause==='ground'?'高度が下がったら W / ↑ で機首上げ · Pitch up when low':cause==='pillar'?'A / D で早めに旋回して避けよう · Turn early to avoid pillars':'空の道をつないだ！ / All rings cleared!';
+  el('flight-overlay').innerHTML=`<section class="flight-card" aria-labelledby="result-title"><div class="eyebrow">FLIGHT REPORT · リザルト</div><h2 id="result-title">${title}</h2><p>${tip}</p><dl class="result-stats"><div><dt>SCORE / スコア</dt><dd>${score}</dd></div><div><dt>RINGS</dt><dd>${rings.filter(r=>!r.visible).length}/40</dd></div><div><dt>FLIGHT TIME</dt><dd>${formatTime()}</dd></div></dl><button id="retry">R / Enter でリトライ · Retry</button></section>`;
+  el('retry').onclick=reset; el('flight-overlay').hidden=false;
+  if(cause!=='complete')el('crash-flash').classList.add('active');
+  el('retry').focus();
+}
+el('flight-overlay').onclick=()=>{if(!started)takeoff();};
+el('reset').onclick=reset; window.addEventListener('keydown',e=>{
+  if(e.repeat)return;
+  if(e.code==='KeyR')reset();
+  if((e.code==='Enter' && (!started || crashed)) || (e.code==='Space' && !started)) {e.preventDefault(); if(!started)takeoff(); else reset();}
+  if(e.code==='KeyC')center();
+});
 const clock=new THREE.Clock(); let radarTimer=0;
 function animate() {
   requestAnimationFrame(animate); const dt=Math.min(clock.getDelta(),.05);
   const key=keyboard.sample(), imu=device.sample(dt);
   const roll=THREE.MathUtils.clamp(key.roll+imu.roll,-1,1), climb=THREE.MathUtils.clamp(key.pitch+imu.pitch,-1,1);
-  if(!crashed) {
+  if(started && !crashed) {
     elapsed+=dt; throttle=THREE.MathUtils.clamp(throttle+key.throttle*dt*.3,0,1);
     speed=THREE.MathUtils.damp(speed,26+throttle*38+((key.boost||imu.boost)?28:0),2,dt);
     pitch=THREE.MathUtils.damp(pitch,climb*.65,3,dt); bank=THREE.MathUtils.damp(bank,-roll*.95,4,dt);
@@ -97,17 +118,49 @@ function animate() {
       const a=previous.z-ring.position.z,b=position.z-ring.position.z;
       if(a*b<=0 && a!==b) {const t=a/(a-b); const hit=previous.clone().lerp(position,t); if(Math.hypot(hit.x-ring.position.x,hit.y-ring.position.y)<13) {ring.visible=false;score+=100;flash('リング通過 +100 / NICE FLIGHT');}}
     }
-    if(position.y<2 || pillars.some(p=>position.y<p.h+2 && Math.hypot(position.x-p.x,position.z-p.z)<p.r+2)) {crashed=true;flash('着地失敗 / Press R to retry');}
-    if(rings.every(r=>!r.visible)) {crashed=true;flash('全リング達成！ / Perfect flight · R to restart');}
+    if(position.y<2) finish('ground');
+    else if(pillars.some(p=>position.y<p.h+2 && Math.hypot(position.x-p.x,position.z-p.z)<p.r+2)) finish('pillar');
+    else if(rings.every(r=>!r.visible)) finish('complete');
   }
   plane.position.copy(position); plane.rotation.set(pitch,heading,bank,'YXZ');
   const behind=new THREE.Vector3(0,8,27).applyAxisAngle(new THREE.Vector3(0,1,0),heading).add(position);
   camera.position.lerp(behind,1-Math.exp(-dt*5)); camera.lookAt(position.clone().add(new THREE.Vector3(-Math.sin(heading)*35,2,-Math.cos(heading)*35)));
   el('score').textContent=String(score).padStart(4,'0'); el('speed').textContent=speed.toFixed(0); el('alt').textContent=Math.max(0,position.y).toFixed(0);
-  el('time').textContent=`${Math.floor(elapsed/60).toString().padStart(2,'0')}:${Math.floor(elapsed%60).toString().padStart(2,'0')}`;
-  el('notice').style.opacity=crashed||performance.now()<noticeUntil?'1':'0';
+  el('time').textContent=formatTime();
+  el('ring-count').textContent=`${rings.filter(r=>!r.visible).length}/40`; el('throttle').textContent=(throttle*100).toFixed(0);
+  el('notice').style.opacity=started && !crashed && performance.now()<noticeUntil?'1':'0';
+  const low=position.y<12 || position.y<25 && Math.sin(pitch)<0;
+  const obstacle=pillars.some(p=>{
+    const dx=p.x-position.x,dz=p.z-position.z;
+    const ahead=-dx*Math.sin(heading)-dz*Math.cos(heading), side=dx*Math.cos(heading)-dz*Math.sin(heading);
+    return position.y<p.h+2 && ahead>0 && ahead-p.r<60 && Math.abs(side)<p.r+12;
+  });
+  el('warning').hidden=!started || crashed || (!low && !obstacle);
+  el('warning').textContent=low?'PULL UP · W / ↑':'OBSTACLE · A / D で回避';
+  updateRingGuide();
   radarTimer+=dt; if(radarTimer>=.1) {radarTimer=0;device.send({t:'radar',h:THREE.MathUtils.radToDeg(heading),o:rings.filter(r=>r.visible && r.position.distanceTo(position)<1200).sort((a,b)=>a.position.distanceToSquared(position)-b.position.distanceToSquared(position)).slice(0,16).map(r=>[Math.round(r.position.x-position.x),Math.round(r.position.z-position.z)]),score,speed:Math.round(speed),alt:Math.round(position.y)});}
   renderer.render(scene,camera);
 }
-camera.position.set(0,75,100); flash('W / ↑ で上昇 · リングを目指そう'); animate();
+camera.position.set(0,75,100); animate();
+function updateRingGuide() {
+  const target=rings.filter(r=>r.visible).sort((a,b)=>a.position.distanceToSquared(position)-b.position.distanceToSquared(position))[0];
+  const guide=el('ring-guide'); guide.hidden=!started || crashed || !target;
+  if(!target || !started || crashed)return;
+  camera.updateMatrixWorld();
+  const local=target.position.clone().applyMatrix4(camera.matrixWorldInverse), projected=target.position.clone().project(camera);
+  const onScreen=local.z<0 && Math.abs(projected.x)<.88 && Math.abs(projected.y)<.8;
+  let x=projected.x*innerWidth/2,y=-projected.y*innerHeight/2;
+  if(!onScreen) {
+    x=local.x; y=-local.y;
+    if(Math.abs(x)+Math.abs(y)<.001)y=1;
+    const halfWidth=Math.max(20,innerWidth/2-(innerWidth>850?230:Math.min(160,innerWidth*.35)));
+    const halfHeight=Math.max(20,innerHeight/2-130);
+    const scale=Math.min(halfWidth/Math.max(Math.abs(x),.001),halfHeight/Math.max(Math.abs(y),.001));
+    x*=scale; y*=scale;
+  }
+  guide.style.left=`${innerWidth/2+x}px`; guide.style.top=`${innerHeight/2+y}px`;
+  const symbol=guide.querySelector<HTMLElement>('.guide-symbol')!;
+  symbol.textContent=onScreen?'◇':'➤'; symbol.style.transform=onScreen?'none':`rotate(${Math.atan2(y,x)}rad)`;
+  guide.querySelector('.guide-distance')!.textContent=`${Math.round(target.position.distanceTo(position))} m`;
+}
 window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
