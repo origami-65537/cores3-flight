@@ -12,3 +12,4 @@
 .instruments>div+div{padding-top:9px;margin-top:9px}.instruments strong{font-size:28px}
 @media(max-height:700px){.instruments{top:110px;padding:12px}.instruments strong{font-size:21px}.instruments>div+div{padding-top:5px;margin-top:5px}.flight-card{padding:20px}}
 @media(prefers-reduced-motion:reduce){#warning{animation:none}}
+header,footer{z-index:7}
