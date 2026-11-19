@@ -1,6 +1,6 @@
 # 空路 / SKYLINE — CoreS3 Flight
 
-M5Stack CoreS3 を傾けて、PC の空を飛ぶ小さな 3D フライトゲーム。デバイスなしでもキーボードだけで全機能を遊べます。前進は自動。光るリングをくぐると +100 点、地面・岩柱への衝突でフライト終了です。追従カメラで自由に探索できます。
+M5Stack CoreS3 を傾けて、PC の空を飛ぶ小さな 3D フライトゲーム。デバイスなしでもキーボードだけで遊べます。前進は自動。40 個のリングを順番に狙い、くぐると +100 点。地面・岩柱への衝突でフライト終了です。
 
 ## ブラウザで遊ぶ
 
@@ -27,9 +27,9 @@ npm run dev
 
 最初はブリーフィング中で飛行・時間は停止しています。Enter / Space またはカードのクリックで離陸します (Take off)。地面・岩柱への衝突でフライト終了。結果画面では R / Enter でリトライでき、すぐに飛行が始まります。
 
-低高度・降下時は PULL UP、前方の岩柱には OBSTACLE を表示します。リングのマーカー・画面端の矢印は最寄りの未通過リングと距離を示します。計器の RINGS は通過数、THROTTLE はスロットルの割合です。
+低高度・降下時は PULL UP、前方の岩柱には OBSTACLE を表示します。金色が次のリングです。マーカーまたは画面端の矢印を頼りに、照準をリングの中心へ合わせてください。リングを逃しても次に進めます。コース後半はリングが小さく、カーブが大きくなります。計器の RINGS は通過数、THROTTLE はスロットルの割合です。
 
-画面下のボタンでもリセット・センター合わせができます。「全画面」でゲームを全画面表示にし、Esc キーで元の表示に戻せます。最初のリングはほぼ正面。高度を保ち、少しずつ旋回して挑戦してください。
+画面下のボタンでもリセット・センター合わせができます。「全画面」でゲームを全画面表示にし、Esc キーで元の表示に戻せます。
 
 ## CoreS3 / CoreS3-Lite に書き込む
 
@@ -119,7 +119,7 @@ pio run -t buildfs
 
 `web/` は Vite + TypeScript + three.js、`firmware/` は PlatformIO + Arduino + M5Unified + ArduinoJson。CI は両方をビルドします。main への push で GitHub Pages に自動デプロイ（管理者権限・リポジトリの Pages 利用許可が必要）。Vite の base は `./`。本体無しでもブラウザ版は動きますが、実機の IMU 軸・タッチ・USB は実機での最終調整を推奨します。
 
-English: an arcade flight playground with keyboard or CoreS3 motion controls. Fly through rings, avoid terrain, and press R to restart. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.
+English: a 40-ring arcade flight course with keyboard or CoreS3 motion controls. Aim at the gold ring, use the bearing arrow if you lose sight of it, and keep flying after a miss. Avoid terrain and press R to retry. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.
 
 The UI fonts in `web/public/fonts/` are SIL OFL subsets of Space Grotesk (Latin) and Noto Sans JP (Japanese game text). Update the Japanese subset when adding new UI characters.
 
