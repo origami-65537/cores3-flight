@@ -80,9 +80,9 @@ USB の Web Serial は Chrome / Edge 専用ですが、Wi-Fi なら Firefox で�
    cd web && npm ci && npm run build:device
    cd ../firmware && pio run -t upload && pio run -t uploadfs
    ```
-3. 本体画面の右上に接続先が出ます。
+3. 本体画面の右上に接続状態が出ます。SSID・AP パスワード・ページを開く案内は本体画面には表示しません。
    - `WiFi 192.168.x.x`: PC を同じネットワークにつなぎ、Firefox で **http://cores3-flight.local/**（開けなければ表示された IP）を開きます。
-   - `AP CoreS3-Flight`（`wifi_config.h` なし、または 15 秒で参加できなかった場合）: PC の Wi-Fi を `CoreS3-Flight`（パスワード `skyline2026`）に接続し、**http://192.168.4.1/** を開きます。
+   - `AP`（`wifi_config.h` なし、または 15 秒で参加できなかった場合）: PC の Wi-Fi を `CoreS3-Flight`（パスワード `skyline2026`）に接続し、**http://192.168.4.1/** を開きます。
 4. ページを開くと自動で Wi-Fi 接続し、HUD に「Wi-Fi接続済み ✓」、本体画面の右上に `*` が付きます。切れても 3 秒ごとに再接続します。あとは USB と同じくセンター合わせ・BOOST・レーダーが使えます。
 
 `npm run dev` のローカル版（http://localhost:5173）からも「Wi-Fiで接続」で本体のアドレス（既定 `cores3-flight.local`）を入力すれば接続できます。USB と Wi-Fi は同時に有効で、USB 給電のまま Wi-Fi で遊んでも構いません。Fedora で `.local` が引けない場合は IP を使うか `sudo dnf install nss-mdns` を確認してください。ファイアウォールは PC 側からの接続なので通常変更不要です。

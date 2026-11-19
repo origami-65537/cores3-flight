@@ -125,11 +125,10 @@ void drawRadar(uint32_t now) {
   radar.setTextColor(0xDFB6); radar.setTextSize(1);
   radar.setCursor(12, 9); radar.print("SKYLINE / CORES3 RADAR");
   radar.setCursor(170, 9);
-  if (accessPoint) radar.printf("AP %s", AP_SSID);
+  if (accessPoint) radar.print("AP");
   else if (WiFi.status() == WL_CONNECTED) radar.printf("WiFi %s", WiFi.localIP().toString().c_str());
   else radar.print("WiFi connecting...");
   if (socket.count()) radar.print(" *");
-  if (accessPoint) { radar.setCursor(170, 21); radar.printf("PW %s", AP_PASSWORD); radar.setCursor(170, 33); radar.print("http://192.168.4.1/"); }
   const bool live = received && now-lastRadar < 2000;
   radar.setTextColor(live ? 0x6F9A : 0xFECA);
   radar.setCursor(12, 24);
@@ -155,9 +154,6 @@ void drawRadar(uint32_t now) {
     radar.setCursor(170, 93); radar.printf("%d m/s", speed);
     radar.setCursor(170, 128); radar.printf("%d m", altitude);
     radar.setTextSize(1);
-  } else {
-    radar.setCursor(170, 61); radar.print("Open the game");
-    radar.setCursor(170, 75); radar.print("and connect CoreS3.");
   }
   radar.fillTriangle(cx,cy-9,cx-6,cy+6,cx+6,cy+6,0xEFFF);
   radar.setCursor(54, 188); radar.print("RANGE 600m");
