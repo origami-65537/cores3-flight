@@ -134,18 +134,22 @@ export class CoreS3 implements InputSource {
       this.onStatus('切断 / Keyboard mode');
     }
   }
+  private flightTilt() {
+    return {roll:this.imu.p-this.center.p,pitch:relativeRoll(this.imu.r,this.center.r)};
+  }
   telemetry() {
     const now = performance.now();
     const live = this.connected && this.last !== undefined && now-this.last <= IMU_TIMEOUT_MS;
-    return {hz: live ? this.frames.filter(t => now-t <= 1000).length : 0, roll: relativeRoll(this.imu.r,this.center.r), pitch: this.imu.p-this.center.p};
+    return {hz: live ? this.frames.filter(t => now-t <= 1000).length : 0, ...this.flightTilt()};
   }
   sample(dt:number): Controls {
     if (!this.connected || this.last === undefined || performance.now()-this.last > IMU_TIMEOUT_MS) return neutral();
     const boost = !!(this.imu.b&1);
     if (this.centering) return {...neutral(),boost};
     const blend = 1-Math.exp(-dt*10);
-    this.filtered.pitch += (axis(relativeRoll(this.imu.r,this.center.r))-this.filtered.pitch)*blend;
-    this.filtered.roll += (axis(this.imu.p-this.center.p)-this.filtered.roll)*blend;
+    const {roll,pitch} = this.flightTilt();
+    this.filtered.pitch += (axis(pitch)-this.filtered.pitch)*blend;
+    this.filtered.roll += (axis(roll)-this.filtered.roll)*blend;
     return {...this.filtered,boost};
   }
   send(data:unknown) {

@@ -43,6 +43,7 @@ test('Wi-Fi uses the same center and roll wrap and re-centers after reconnecting
   for (let i = 0; i < 10; i++) frame(179,-12);
   frame(-179,-12);
   a.deepEqual(device.sample(.05), neutral());
+  a.deepEqual(device.telemetry(), {hz:11,roll:0,pitch:2});
   frame(-151,-12);
   a.ok(device.sample(.05).pitch > .3);
   a.equal(device.sample(.05).roll, 0);
@@ -74,6 +75,9 @@ async function assertLandscapeGestures(device:CoreS3, frame:(r:number,p:number) 
   ];
   for (const {gesture,r,p,roll,pitch} of poses) {
     await frame(r,p);
+    const tilt = device.telemetry();
+    a.equal(tilt.roll, roll*15, `${gesture}: HUD roll`);
+    a.equal(tilt.pitch, pitch*15, `${gesture}: HUD pitch`);
     for (let i = 0; i < 30; i++) device.sample(.05);
     const actual = device.sample(.05);
     a.ok(Math.abs(actual.roll-roll*axis(15)) < 1e-6, `${gesture}: roll ${actual.roll}`);
