@@ -98,8 +98,8 @@ test('USB auto-centers on fresh, noisy IMU data and preserves keyboard-ready neu
     a.deepEqual(device.sample(.05), neutral());
     await frame(47, 18, 1);
     const input = device.sample(.05);
-    a.ok(input.roll > .3 && input.roll < .5);
-    a.ok(input.pitch > .3 && input.pitch < .5);
+    a.ok(input.roll > .6 && input.roll < .65);
+    a.ok(input.pitch > .6 && input.pitch < .65);
     a.equal(input.boost, true);
   });
 });

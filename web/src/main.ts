@@ -3,6 +3,8 @@ import { Keyboard, CoreS3, wifiTarget } from './input';
 import { buildCourse, crossGate, isNearCourse, launch } from './course';
 import { RenderQuality } from './render-quality';
 import { ringGuidePlacement } from './guide-layout';
+import { FEEL, fovFromSpeed, nearMiss } from './feel';
+import { FlightAudio } from './audio';
 import './style.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -14,10 +16,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">光のリングをくぐろう<small>Fly through the glowing rings</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>Shift / Space</kbd> ブースト · Boost</li><li><kbd>R</kbd> リスタート · Restart</li></ul><p>地面・岩柱に衝突するとフライト終了。<br>Ground & rock pillars end the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
 <footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>SHIFT / SPACE</kbd> Boost</span></div><div class="actions"><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button><button id="fullscreen" type="button" aria-pressed="false" hidden>全画面</button></div></footer>`;
 const scene = new THREE.Scene();
+document.querySelector('.flight-card ul')!.insertAdjacentHTML('beforeend','<li><kbd>M</kbd> Mute / Unmute</li>');
+document.querySelector('footer .controls')!.insertAdjacentHTML('beforeend','<span><kbd>M</kbd> Mute</span>');
 scene.background = new THREE.Color('#a6d2df'); scene.fog = new THREE.Fog('#a6d2df',280,1400);
 const renderer = new THREE.WebGLRenderer({antialias:true});
 renderer.domElement.setAttribute('aria-label','3D flight game'); document.body.prepend(renderer.domElement);
-const camera = new THREE.PerspectiveCamera(60,1,.5,2400);
+const camera = new THREE.PerspectiveCamera(FEEL.fov.cruise,1,.5,2400);
+const audio = new FlightAudio();
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
 const quality = new RenderQuality();
 let viewWidth = 0, viewHeight = 0, viewDpr = 0, renderRatio = 0;
 function resizeRenderer() {
@@ -66,6 +72,48 @@ for (const tile of pillarTiles.values()) {
   });
   batch.computeBoundingSphere();
   scene.add(batch);
+}
+for (const [kind,count] of Object.entries(FEEL.scenery)) {
+  const cloud=kind==='clouds', tree=kind==='trees';
+  const geometry=tree?new THREE.ConeGeometry(1,1,5):new THREE.IcosahedronGeometry(1,0);
+  const material=new THREE.MeshStandardMaterial({color:cloud?0xffffff:tree?0x427b65:0x79988d,flatShading:true,transparent:cloud,opacity:cloud?.24:1,depthWrite:!cloud});
+  const tiles=new Map<string,THREE.Matrix4[]>();
+  for(let i=0;i<count;i++) {
+    const x=Math.sin(i*127.1+count)*1500,z=Math.cos(i*73.7+count)*3100-2600;
+    const size=cloud?20+i%18:tree?4+i%7:2+i%5;
+    if(isNearCourse(course,x,z,size))continue;
+    const matrix=new THREE.Matrix4().makeScale(size,cloud?size*.2:tree?size*2:size*.6,size);
+    matrix.setPosition(x,cloud?18+i%32:tree?size:size*.3,z);
+    const tile=`${Math.floor(x/600)},${Math.floor(z/600)}`;
+    if(!tiles.has(tile))tiles.set(tile,[]);
+    tiles.get(tile)!.push(matrix);
+  }
+  for(const matrices of tiles.values()) {
+    const mesh=new THREE.InstancedMesh(geometry,material,matrices.length);
+    matrices.forEach((m,i)=>mesh.setMatrixAt(i,m)); mesh.computeBoundingSphere(); scene.add(mesh);
+  }
+}
+const linePositions=new Float32Array(FEEL.speedLines.count*6);
+for(let i=0;i<FEEL.speedLines.count;i++) {
+  const angle=i*2.39996,r=9+i%8,z=-20-i%6*5;
+  linePositions.set([Math.cos(angle)*r,Math.sin(angle)*r,z,Math.cos(angle)*r,Math.sin(angle)*r,z+FEEL.speedLines.length],i*6);
+}
+const lineGeometry=new THREE.BufferGeometry(); lineGeometry.setAttribute('position',new THREE.BufferAttribute(linePositions,3));
+const lineMaterial=new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0,depthWrite:false});
+const speedLines=new THREE.LineSegments(lineGeometry,lineMaterial); camera.add(speedLines); scene.add(camera);
+const particlePositions=new Float32Array(FEEL.particleCount*3);
+const particleGeometry=new THREE.BufferGeometry(); particleGeometry.setAttribute('position',new THREE.BufferAttribute(particlePositions,3));
+const particleMaterial=new THREE.PointsMaterial({color:0xffe5a0,size:1.5,transparent:true,depthWrite:false});
+const particles=new THREE.Points(particleGeometry,particleMaterial); particles.frustumCulled=false; particles.visible=false; scene.add(particles);
+let rewardRing:THREE.Mesh<THREE.TorusGeometry,THREE.MeshBasicMaterial>|null=null, rewardAge=0, streak=0, hitstopUntil=0, boostMix=0, wasBoosting=false;
+let lastWhoosh=-Infinity, lastCue=-Infinity, lastBoostCue=-Infinity, wasLow=false, skimmedGround=false;
+function reward(index:number) {
+  if(rewardRing) {rewardRing.visible=false; rewardRing.material.dispose(); rewardRing.material=distantRing;}
+  rewardRing=rings[index]; rewardRing.visible=true;
+  rewardRing.material=new THREE.MeshBasicMaterial({color:0xffffff,toneMapped:false});
+  rewardAge=0; particles.position.copy(rewardRing.position); particles.visible=true;
+  particlePositions.fill(0); hitstopUntil=performance.now()+FEEL.hitstopMs;
+  audio.chime(++streak);
 }
 const plane = new THREE.Group();
 const cream = new THREE.MeshStandardMaterial({color:0xfff3d8,metalness:.25,roughness:.4});
@@ -133,12 +181,15 @@ const guideSymbol = ringGuide.querySelector<HTMLElement>('.guide-symbol')!;
 const guideDistance = ringGuide.querySelector<HTMLElement>('.guide-distance')!;
 const guideLocal = new THREE.Vector3(), guideProjected = new THREE.Vector3();
 function flash(s:string) {if (!ended) {notice.textContent=s; noticeUntil=performance.now()+2200;}}
-function takeoff() {started=true; el('flight-overlay').hidden=true; flash('照準を金色のリングへ / Aim at gold');}
+function takeoff() {audio.start(); started=true; el('flight-overlay').hidden=true; flash('照準を金色のリングへ / Aim at gold');}
 function resetFlight() {
   position.set(launch.x,launch.y,launch.z);
   heading=pitch=bank=score=elapsed=nextGate=0;
   speed=cruiseSpeed; throttle=cruiseThrottle; ended=false;
-  rings.forEach(r => {r.visible=true; r.material=distantRing;});
+  streak=0; hitstopUntil=0; wasBoosting=false; wasLow=false; skimmedGround=false; boostMix=0; lastWhoosh=lastCue=lastBoostCue=-Infinity;
+  if(rewardRing)rewardRing.material.dispose();
+  rewardRing=null; particles.visible=false;
+  rings.forEach((r,i) => {r.visible=true; r.material=distantRing; r.scale.setScalar(course[i].radius/(1-rim));});
   rings[0].material=activeRing;
   camera.position.set(launch.x,launch.y+8,launch.z+27);
   el('crash-flash').classList.remove('active');
@@ -161,6 +212,7 @@ el('reset').onclick=reset; window.addEventListener('keydown',e=>{
   if(e.code==='KeyR')reset();
   if((e.code==='Enter' && (!started || ended)) || (e.code==='Space' && !started)) {e.preventDefault(); if(!started)takeoff(); else reset();}
   if(e.code==='KeyC')center();
+  if(e.code==='KeyM') {audio.toggle(); flash(audio.muted?'Audio muted':'Audio on');}
 });
 const clock=new THREE.Clock(); let radarTimer=0;
 const scoreDisplay=el('score'), speedDisplay=el('speed'), altDisplay=el('alt'), timeDisplay=el('time');
@@ -189,14 +241,18 @@ function animate() {
   requestAnimationFrame(animate);
   const frameTime=clock.getDelta();
   if (quality.sample(frameTime*1000) || devicePixelRatio!==viewDpr) resizeRenderer();
-  const dt=Math.min(frameTime,.05);
+  const visualDt=Math.min(frameTime,.05), now=performance.now();
+  const dt=now<hitstopUntil?0:visualDt;
   const key=keyboard.sample(), imu=device.sample(dt);
   const roll=THREE.MathUtils.clamp(key.roll+imu.roll,-1,1), climb=THREE.MathUtils.clamp(key.pitch+imu.pitch,-1,1);
+  const boosting=started && !ended && (key.boost||imu.boost);
+  if(boosting && !wasBoosting) {audio.boost(); if(now-lastBoostCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'boost'});lastBoostCue=now;}}
+  wasBoosting=boosting;
   if(started && !ended) {
     elapsed+=dt; throttle=THREE.MathUtils.clamp(throttle+key.throttle*dt*.3,0,1);
     speed=THREE.MathUtils.damp(speed,minSpeed+throttle*speedRange+((key.boost||imu.boost)?28:0),2,dt);
-    pitch=THREE.MathUtils.damp(pitch,climb*.49,4,dt); bank=THREE.MathUtils.damp(bank,-roll*.78,5,dt);
-    heading+=Math.sin(bank)*dt*.64;
+    pitch=THREE.MathUtils.damp(pitch,climb*.49,key.pitch?FEEL.response.keyboardPitch:FEEL.response.pitch,dt); bank=THREE.MathUtils.damp(bank,-roll*.78,key.roll?FEEL.response.keyboardBank:FEEL.response.bank,dt);
+    heading+=Math.sin(bank)*dt*FEEL.response.turn;
     previous.copy(position);
     forward.set(-Math.sin(heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(heading)*Math.cos(pitch));
     position.addScaledVector(forward,speed*dt);
@@ -207,18 +263,36 @@ function animate() {
     } else {
       const result = crossGate(course[nextGate],previous,position);
       if (result) {
-        rings[nextGate++].visible=false;
-        if (result==='hit') {score+=100; flash('リング通過 +100 / Nice flight');}
-        else flash('リングを逃した / Missed · Keep going');
+        const index=nextGate++; rings[index].visible=false;
+        if (result==='hit') {score+=100; reward(index); flash('リング通過 +100 / Nice flight');}
+        else {streak=0; flash('リングを逃した / Missed · Keep going');}
         if (nextGate===course.length) finish('complete');
         else rings[nextGate].material=activeRing;
       }
     }
   }
   plane.position.copy(position); plane.rotation.set(pitch,heading,bank,'YXZ');
-  behind.set(0,8,27).applyAxisAngle(up,heading).add(position);
+  audio.update(speed,started && !ended);
+  boostMix=THREE.MathUtils.damp(boostMix,boosting?1:0,FEEL.camera.boostSmoothing,visualDt);
+  lineMaterial.opacity=boostMix*FEEL.speedLines.opacity;
+  speedLines.position.z=(now%200)/200*FEEL.speedLines.length;
+  camera.fov=THREE.MathUtils.damp(camera.fov,fovFromSpeed(speed),FEEL.fov.smoothing,visualDt); camera.updateProjectionMatrix();
+  if(rewardRing) {
+    rewardAge+=visualDt;
+    rewardRing.scale.setScalar(course[nextGate-1].radius/(1-rim)*(1+.25*Math.sin(Math.min(1,rewardAge/FEEL.ringPulseSeconds)*Math.PI)));
+    if(rewardAge>FEEL.ringPulseSeconds)rewardRing.visible=false;
+    for(let i=0;i<FEEL.particleCount;i++) {
+      const angle=i*2.39996,r=rewardAge*FEEL.particleSpeed;
+      particlePositions.set([Math.cos(angle)*r,Math.sin(angle)*r,(i%5-2)*r*.2],i*3);
+    }
+    particleGeometry.attributes.position.needsUpdate=true; particleMaterial.opacity=Math.max(0,1-rewardAge/FEEL.particleSeconds);
+    if(rewardAge>FEEL.particleSeconds) {particles.visible=false; rewardRing.material.dispose(); rewardRing.material=distantRing; rewardRing=null;}
+  }
+  behind.set(0,8,27+boostMix*FEEL.camera.pullback).applyAxisAngle(up,heading).add(position);
   lookTarget.set(-Math.sin(heading)*35,2,-Math.cos(heading)*35).add(position);
-  camera.position.lerp(behind,1-Math.exp(-dt*5)); camera.lookAt(lookTarget);
+  camera.position.lerp(behind,1-Math.exp(-visualDt*FEEL.camera.smoothing));
+  if(!reducedMotion.matches) {camera.position.x+=Math.sin(now*.047)*boostMix*FEEL.camera.shake; camera.position.y+=Math.cos(now*.063)*boostMix*FEEL.camera.shake;}
+  camera.lookAt(lookTarget);
   ringGuide.hidden = reticle.hidden = !started || ended;
   if (started && !ended) {
     const target = rings[nextGate].position;
@@ -238,6 +312,13 @@ function animate() {
   const opacity=started && !ended && performance.now()<noticeUntil?'1':'0';
   if (notice.style.opacity!==opacity) notice.style.opacity=opacity;
   const low=position.y<12 || position.y<25 && Math.sin(pitch)<0;
+  const flying=started && !ended;
+  if(flying && low && !wasLow && now-lastCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'pullup'}); lastCue=now;}
+  wasLow=flying && low;
+  const groundPass=skimmedGround && position.y-2>=FEEL.nearMiss.ground;
+  if(flying && nearMiss(position.y-2,FEEL.nearMiss.ground))skimmedGround=true;
+  if(!flying || groundPass)skimmedGround=false;
+  if(flying && now-lastWhoosh>FEEL.nearMiss.cooldownMs && (groundPass || pillars.some(p=>position.y<p.h+2 && nearMiss(Math.hypot(position.x-p.x,position.z-p.z)-p.r-2,FEEL.nearMiss.pillar) && (position.x-p.x)*forward.x+(position.z-p.z)*forward.z>0))) {audio.whoosh();lastWhoosh=now;}
   const obstacle=pillars.some(p=>{
     const dx=p.x-position.x,dz=p.z-position.z;
     const ahead=-dx*Math.sin(heading)-dz*Math.cos(heading), side=dx*Math.cos(heading)-dz*Math.sin(heading);
