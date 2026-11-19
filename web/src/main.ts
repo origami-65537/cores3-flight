@@ -153,7 +153,9 @@ function updateRingGuide() {
   if(!onScreen) {
     x=local.x; y=-local.y;
     if(Math.abs(x)+Math.abs(y)<.001)y=1;
-    const scale=Math.min(Math.max(20,innerWidth/2-45)/Math.max(Math.abs(x),.001),Math.max(20,innerHeight/2-110)/Math.max(Math.abs(y),.001));
+    const halfWidth=Math.max(20,innerWidth/2-(innerWidth>850?230:Math.min(160,innerWidth*.35)));
+    const halfHeight=Math.max(20,innerHeight/2-130);
+    const scale=Math.min(halfWidth/Math.max(Math.abs(x),.001),halfHeight/Math.max(Math.abs(y),.001));
     x*=scale; y*=scale;
   }
   guide.style.left=`${innerWidth/2+x}px`; guide.style.top=`${innerHeight/2+y}px`;
