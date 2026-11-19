@@ -22,7 +22,7 @@ AsyncWebServer server(80);
 AsyncWebSocket socket("/ws");
 std::mutex socketMutex;
 String socketLine;
-bool socketPending = false, accessPoint = false, mdnsStarted = false;
+bool socketPending = false, accessPoint = false, mdnsStarted = false, joined = false;
 uint32_t wifiStarted = 0, lastCleanup = 0;
 
 M5Canvas radar(&M5.Display);
@@ -85,7 +85,8 @@ void startAccessPoint() {
 }
 
 void updateWifi(uint32_t now) {
-  if (!accessPoint && WiFi.status() != WL_CONNECTED && now - wifiStarted > 15000) startAccessPoint();
+  if (WiFi.status() == WL_CONNECTED) joined = true;
+  if (!accessPoint && !joined && now - wifiStarted > 15000) startAccessPoint();
   if (!mdnsStarted && (accessPoint || WiFi.status() == WL_CONNECTED) && MDNS.begin(HOSTNAME)) {
     MDNS.addService("http", "tcp", 80); mdnsStarted = true;
   }
