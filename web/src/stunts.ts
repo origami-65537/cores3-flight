@@ -14,7 +14,7 @@ export const GESTURES: readonly Gesture[] = ['twistLeft','twistRight','pull','pu
 /** Centered device tilt in degrees (roll: right edge down, pitch: top edge up) and its rates in degrees per second. */
 export interface MotionSample { t:number; roll:number; pitch:number; rollRate:number; pitchRate:number }
 type Axis = 'roll' | 'pitch';
-interface Candidate { axis:Axis; sign:number; start:number; rest:number; otherRest:number; peak:number; peakAt:number; peakRate:number; otherPeak:number }
+interface Candidate { axis:Axis; sign:number; start:number; rest:number; otherRest:number; peak:number; peakAt:number; peakRate:number; otherPeak:number; reached:boolean }
 export interface Flick { gesture:Gesture; rate:number; swing:number; t:number }
 
 export class FlickDetector {
@@ -43,7 +43,7 @@ export class FlickDetector {
     if (!c) {
       if (Math.max(rollRate,pitchRate) < F.rate) return null;
       const axis:Axis = rollRate >= pitchRate ? 'roll' : 'pitch', other:Axis = axis === 'roll' ? 'pitch' : 'roll';
-      c = this.candidate = {axis, sign:0, start:s.t, rest:this.rest[axis], otherRest:this.rest[other], peak:0, peakAt:s.t, peakRate:0, otherPeak:0};
+      c = this.candidate = {axis, sign:0, start:s.t, rest:this.rest[axis], otherRest:this.rest[other], peak:0, peakAt:s.t, peakRate:0, otherPeak:0, reached:false};
     }
     const other:Axis = c.axis === 'roll' ? 'pitch' : 'roll';
     const moved = s[c.axis]-c.rest;
@@ -53,8 +53,12 @@ export class FlickDetector {
     c.peakRate = Math.max(c.peakRate, c.axis === 'roll' ? rollRate : pitchRate);
     c.otherPeak = Math.max(c.otherPeak, Math.abs(s[other]-c.otherRest));
     if (swing > c.peak) { c.peak = swing; c.peakAt = s.t; }
-    const reached = c.peak >= (c.axis === 'roll' ? F.rollSwing : F.pitchSwing);
-    if (!reached) return s.t-c.start > F.windowMs ? this.fail(`${c.axis}: swing ${c.peak.toFixed(0)}° too small`) : null;
+    if (!c.reached) {
+      // The full swing has to arrive inside the window; a tilt that gets there later is steering.
+      if (s.t-c.start > F.windowMs) return this.fail(`${c.axis}: swing ${c.peak.toFixed(0)}° too small`);
+      if (c.peak < (c.axis === 'roll' ? F.rollSwing : F.pitchSwing)) return null;
+      c.reached = true;
+    }
     if (c.otherPeak > c.peak*F.crossAxis) return this.fail(`${c.axis}: two axes moved`);
     if (c.rest*c.sign+c.peak < F.outward) return this.fail(`${c.axis}: ended near neutral`);
     if (c.axis === 'roll') {

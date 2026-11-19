@@ -5,7 +5,7 @@ import { RenderQuality } from './render-quality';
 import { ringGuidePlacement } from './guide-layout';
 import { FEEL, fovFromSpeed, nearMiss } from './feel';
 import { FlightAudio } from './audio';
-import { STUNT, TRICK_NAMES, stepTrick, trickFor, trickFrame, trickPoints, trickSeconds, type Gesture, type Trick } from './stunts';
+import { STUNT, TRICK_NAMES, stepTrick, trickFor, trickFrame, trickPoints, trickSeconds, type Gesture, type Trick, type TrickKind } from './stunts';
 import './style.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
@@ -276,6 +276,7 @@ function animate() {
     elapsed+=dt; throttle=THREE.MathUtils.clamp(throttle+key.throttle*dt*.3,0,1);
     speed=THREE.MathUtils.damp(speed,minSpeed+throttle*speedRange+((key.boost||imu.boost)?28:0),2,dt);
     previous.copy(position);
+    let landed:TrickKind|null=null;
     if(trick) {
       // The trick flies the plane; the flight model underneath levels out and takes over again when it ends.
       pitch=THREE.MathUtils.damp(pitch,0,FEEL.response.pitch,dt); bank=THREE.MathUtils.damp(bank,0,FEEL.response.bank,dt);
@@ -283,10 +284,8 @@ function animate() {
       position.x+=step.dx; position.y+=step.dy; position.z+=step.dz;
       forward.set(-Math.sin(heading)*Math.cos(angle),Math.sin(angle),-Math.cos(heading)*Math.cos(angle));
       if(step.done) {
-        const points=trickPoints(trick.kind);
         if(trick.kind==='splitS')heading+=Math.PI;
-        speed*=step.frame.speed; score+=points;
-        if(points)flash(`${TRICK_NAMES[trick.kind]} +${points}`);
+        speed*=step.frame.speed; landed=trick.kind;
         trick=null;
       }
     } else {
@@ -300,6 +299,8 @@ function animate() {
     else if (pillars.some(p=>position.y<p.h+2 && Math.hypot(position.x-p.x,position.z-p.z)<p.r+2)) {
       finish('pillar');
     } else {
+      // A trick scores only once its last frame has cleared the ground and the pillars.
+      if(landed && trickPoints(landed)) {score+=trickPoints(landed); flash(`${TRICK_NAMES[landed]} +${trickPoints(landed)}`);}
       const result = crossGate(course[nextGate],previous,position);
       if (result) {
         const index=nextGate++; rings[index].visible=false;

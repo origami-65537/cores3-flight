@@ -46,6 +46,19 @@ test('the swing back after a flick does not fire the opposite flick', () => {
   a.match(detector.rejected, /too small/);
 });
 
+test('a swing that reaches full tilt after the 350 ms window is not a flick', () => {
+  const at = (t:number, pitch:number, pitchRate:number) => ({t, roll:0, pitch, rollRate:0, pitchRate});
+  const run = (lastT:number) => {
+    const detector = new FlickDetector();
+    detector.update(at(0,0,0));
+    detector.update(at(20,6,300));
+    detector.update(at(340,44,60));
+    return [detector.update(at(lastT,46,60)), detector.rejected];
+  };
+  a.deepEqual(run(370), ['pull','']);
+  a.deepEqual(run(380), [null,'pitch: swing 46° too small']);
+});
+
 test('a diagonal swing is not a flick', () => {
   const detector = new FlickDetector();
   a.deepEqual(play(detector, [...settle,[340,50,60],[480,0,0],[700,0,0]]), []);
