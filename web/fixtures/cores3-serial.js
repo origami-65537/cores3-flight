@@ -1,9 +1,9 @@
 (() => {
   const encoder = new TextEncoder();
   const sim = window.coreS3Sim = { topEdgeUp: 17, rightEdgeDown: -12, buttons: 0, paused: false, legacyFirmware: false, radar: [],
-    flick(gesture) {
-      const sign = gesture === 'twistLeft' || gesture === 'push' ? -1 : 1;
-      sim.active = { at: performance.now(), twist: gesture.startsWith('twist'), sign };
+    // Tilts 60 degrees past the centred pose for a while: 'rollLeft', 'rollRight', 'pull' or 'push'.
+    hold(gesture, ms = 1300) {
+      sim.active = { at: performance.now(), ms, roll: gesture.startsWith('roll'), sign: gesture === 'rollLeft' || gesture === 'push' ? -1 : 1 };
     } };
   const wrap = degrees => ((degrees + 180) % 360 + 360) % 360 - 180;
   Object.defineProperty(navigator, 'serial', {
@@ -24,13 +24,12 @@
               const t = (performance.now() - boot) / 1000;
               if (t < .3 || sim.paused) return;
               const now = performance.now();
-              const flick = sim.active && now - sim.active.at < 700 ? sim.active : null;
-              const k = flick ? (now - flick.at) / 140 : 0;
-              // A flick swings 55 degrees in 140 ms; a twist snaps back, a pull or push holds for the rest of 700 ms.
-              const swing = !flick ? 0 : k < 1 ? k * k * (3 - 2 * k) : flick.twist ? Math.max(0, 1 - (k - 1) * (k - 1) * (5 - 2 * k)) * (k < 2) : 1;
-              const rUnwrapped = sim.topEdgeUp + (flick && !flick.twist ? flick.sign * 55 * swing : 0) + .55 * Math.sin(t * 23) + .6 * Math.sin(t * .7);
+              const hold = sim.active && now - sim.active.at < sim.active.ms + 150 ? sim.active : null;
+              // The hand takes 150 ms to get there and 150 ms to come back.
+              const swing = hold ? 60 * hold.sign * Math.max(0, Math.min(1, (now - hold.at) / 150, (hold.at + hold.ms + 150 - now) / 150)) : 0;
+              const rUnwrapped = sim.topEdgeUp + (hold && !hold.roll ? swing : 0) + .55 * Math.sin(t * 23) + .6 * Math.sin(t * .7);
               const r = +wrap(rUnwrapped).toFixed(2);
-              const p = +Math.max(-90, Math.min(90, sim.rightEdgeDown + (flick && flick.twist ? flick.sign * 55 * swing : 0) + .45 * Math.cos(t * 19) + .5 * Math.sin(t * .63))).toFixed(2);
+              const p = +Math.max(-90, Math.min(90, sim.rightEdgeDown + (hold && hold.roll ? swing : 0) + .45 * Math.cos(t * 19) + .5 * Math.sin(t * .63))).toFixed(2);
               const dt = last ? Math.max(.005, (now - last.at) / 1000) : .02;
               const gx = last ? +((rUnwrapped - last.r) / dt).toFixed(1) : 0, gy = last ? +((p - last.p) / dt).toFixed(1) : 0;
               last = { at: now, r: rUnwrapped, p };

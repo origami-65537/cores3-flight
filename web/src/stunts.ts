@@ -1,120 +1,121 @@
+/**
+ * Player-driven aerobatics. Holding the controller past the normal tilt range keeps the plane rotating
+ * about that axis; letting go stops the rotation and the normal 45° bank / 28° pitch limits apply again.
+ */
 export const STUNT = {
-  // Degrees, degrees per second and milliseconds of CoreS3 motion; tune after device playtests.
-  flick: { rate:250, rollSwing:40, pitchSwing:45, windowMs:350, returnMs:300, returnFraction:.5, outward:25, crossAxis:.6, direction:8, restRate:80, armTilt:20, armRate:120 },
-  barrelRoll: { seconds:.7, points:100, sink:3, corkscrew:2 },
-  loop: { seconds:2, points:300, minSpeed:35, topSpeed:.75 },
-  splitS: { seconds:1.6, points:250, drop:40 },
-  stall: { seconds:2.2, drop:35, hang:.3, exitSpeed:.55 },
-  // The chase camera follows more tightly during a trick so the plane stays in frame.
-  cameraSmoothing:10,
+  // Device tilt in degrees. 30° is already full normal deflection, so a hold has to go clearly past it.
+  hold: { start:50, release:38 },
+  limits: { bank:.78, pitch:.49 },
+  // Rates are radians per second while held: one roll takes 1.2 s, one loop 2.4 s.
+  roll: { rate:5.2, points:100 },
+  loop: { rate:2.6, points:300, minSpeed:35 },
+  // A push has to carry the nose at least this far round for the reversal to count.
+  splitS: { points:250, minTurn:Math.PI*.75 },
+  gravity:18,
+  cameraSmoothing:10, viewSmoothing:3,
 } as const;
 
-export type Gesture = 'twistLeft' | 'twistRight' | 'pull' | 'push';
-export const GESTURES: readonly Gesture[] = ['twistLeft','twistRight','pull','push'];
-/** Centered device tilt in degrees (roll: right edge down, pitch: top edge up) and its rates in degrees per second. */
-export interface MotionSample { t:number; roll:number; pitch:number; rollRate:number; pitchRate:number }
-type Axis = 'roll' | 'pitch';
-interface Candidate { axis:Axis; sign:number; start:number; rest:number; otherRest:number; peak:number; peakAt:number; peakRate:number; otherPeak:number; reached:boolean }
-export interface Flick { gesture:Gesture; rate:number; swing:number; t:number }
+const TAU = Math.PI*2, HALF = Math.PI/2;
+const turns = (angle:number) => Math.round(angle/TAU);
+const damp = (from:number, to:number, rate:number, dt:number) => from+(to-from)*(1-Math.exp(-rate*dt));
+const clamp = (n:number, limit:number) => Math.max(-limit,Math.min(limit,n));
 
-export class FlickDetector {
-  armed = false;
-  last?: Flick;
-  rejected = '';
-  counts: Record<Gesture,number> = {twistLeft:0,twistRight:0,pull:0,push:0};
-  private rest = {roll:0,pitch:0};
-  private candidate?: Candidate;
-  get progress() { return this.candidate && {axis:this.candidate.axis, swing:this.candidate.peak*(this.candidate.sign||1), rate:this.candidate.peakRate}; }
-  reset() { this.armed = false; this.candidate = undefined; }
-  private fail(reason:string) { this.rejected = reason; this.reset(); return null; }
-  update(s:MotionSample): Gesture | null {
-    const F = STUNT.flick;
-    const rollRate = Math.abs(s.rollRate), pitchRate = Math.abs(s.pitchRate);
-    if (!this.candidate) {
-      if (rollRate < F.restRate) this.rest.roll = s.roll;
-      if (pitchRate < F.restRate) this.rest.pitch = s.pitch;
+export type TrickKind = 'barrelRoll' | 'loop' | 'splitS';
+export const TRICK_NAMES: Record<TrickKind,string> = {barrelRoll:'BARREL ROLL', loop:'LOOP', splitS:'SPLIT S'};
+export const trickPoints = (kind:TrickKind) => kind === 'barrelRoll' ? STUNT.roll.points : kind === 'loop' ? STUNT.loop.points : STUNT.splitS.points;
+
+/** Which axis, if any, is held past the normal tilt range: roll > 0 is right, pitch > 0 is a pull. */
+export interface Hold { roll:number; pitch:number }
+export class HoldDetector {
+  private axis: 'roll' | 'pitch' | null = null;
+  private sign = 0;
+  reset() { this.axis = null; }
+  /** Tilt in degrees from the centred pose. One axis at a time: a hard pull also disturbs the other reading. */
+  update(roll:number, pitch:number): Hold {
+    const H = STUNT.hold;
+    if (this.axis && (this.axis === 'roll' ? roll : pitch)*this.sign < H.release) this.axis = null;
+    if (!this.axis && Math.max(Math.abs(roll),Math.abs(pitch)) >= H.start) {
+      this.axis = Math.abs(roll) >= Math.abs(pitch) ? 'roll' : 'pitch';
+      this.sign = Math.sign(this.axis === 'roll' ? roll : pitch);
     }
-    if (!this.armed) {
-      // A new flick is accepted only after the device has settled near neutral.
-      this.armed = Math.max(Math.abs(s.roll),Math.abs(s.pitch)) < F.armTilt && Math.max(rollRate,pitchRate) < F.armRate;
-      return null;
-    }
-    let c = this.candidate;
-    if (!c) {
-      if (Math.max(rollRate,pitchRate) < F.rate) return null;
-      const axis:Axis = rollRate >= pitchRate ? 'roll' : 'pitch', other:Axis = axis === 'roll' ? 'pitch' : 'roll';
-      c = this.candidate = {axis, sign:0, start:s.t, rest:this.rest[axis], otherRest:this.rest[other], peak:0, peakAt:s.t, peakRate:0, otherPeak:0, reached:false};
-    }
-    const other:Axis = c.axis === 'roll' ? 'pitch' : 'roll';
-    const moved = s[c.axis]-c.rest;
-    // Direction comes from the measured tilt, so the gyro only has to report how fast the device moved.
-    if (!c.sign && Math.abs(moved) >= F.direction) c.sign = Math.sign(moved);
-    const swing = moved*c.sign;
-    c.peakRate = Math.max(c.peakRate, c.axis === 'roll' ? rollRate : pitchRate);
-    c.otherPeak = Math.max(c.otherPeak, Math.abs(s[other]-c.otherRest));
-    if (swing > c.peak) { c.peak = swing; c.peakAt = s.t; }
-    if (!c.reached) {
-      // The full swing has to arrive inside the window; a tilt that gets there later is steering.
-      if (s.t-c.start > F.windowMs) return this.fail(`${c.axis}: swing ${c.peak.toFixed(0)}° too small`);
-      if (c.peak < (c.axis === 'roll' ? F.rollSwing : F.pitchSwing)) return null;
-      c.reached = true;
-    }
-    if (c.otherPeak > c.peak*F.crossAxis) return this.fail(`${c.axis}: two axes moved`);
-    if (c.rest*c.sign+c.peak < F.outward) return this.fail(`${c.axis}: ended near neutral`);
-    if (c.axis === 'roll') {
-      // A twist counts only when it snaps back; a held bank is steering.
-      if (s.t-c.peakAt > F.returnMs) return this.fail('roll: held, not flicked');
-      if (swing > c.peak*F.returnFraction) return null;
-    }
-    const gesture:Gesture = c.axis === 'roll' ? (c.sign > 0 ? 'twistRight' : 'twistLeft') : c.sign > 0 ? 'pull' : 'push';
-    this.last = {gesture, rate:c.peakRate, swing:c.peak, t:s.t};
-    this.counts[gesture]++; this.rejected = ''; this.reset();
-    return gesture;
+    return {roll:this.axis === 'roll' ? this.sign : 0, pitch:this.axis === 'pitch' ? this.sign : 0};
   }
 }
 
-export type TrickKind = 'barrelRoll' | 'loop' | 'splitS' | 'stall';
-export interface Trick { kind:TrickKind; dir:1|-1; t:number }
-/** Offsets a trick adds to the flight model at normalized time u: radians, metres and speed factors. */
-export interface TrickFrame { pitch:number; roll:number; yaw:number; speed:number; climb:number; drop:number; side:number; lift:number }
-export const TRICK_NAMES: Record<TrickKind,string> = {barrelRoll:'BARREL ROLL', loop:'LOOP', splitS:'SPLIT S', stall:'STALL'};
-export const trickSeconds = (kind:TrickKind) => STUNT[kind].seconds;
-export const trickPoints = (kind:TrickKind) => kind === 'stall' ? 0 : STUNT[kind].points;
-export function trickFor(gesture:Gesture, speed:number): Trick {
-  if (gesture === 'pull') return {kind:speed >= STUNT.loop.minSpeed ? 'loop' : 'stall', dir:1, t:0};
-  if (gesture === 'push') return {kind:'splitS', dir:1, t:0};
-  return {kind:'barrelRoll', dir:gesture === 'twistRight' ? 1 : -1, t:0};
+/** Share of the turn rate that banking gives at this pitch: 1 in normal flight, reversed when flying on the plane's back. */
+export const turnFactor = (pitch:number) => clamp(Math.cos(pitch)/Math.cos(STUNT.limits.pitch),1);
+/** How much steeper than the normal pitch limit the flight path is, as a vertical fraction: climbing bleeds speed, diving adds it. */
+export function steepness(pitch:number) {
+  const vertical = Math.sin(pitch);
+  return vertical-clamp(vertical,Math.sin(STUNT.limits.pitch));
 }
-const clamp01 = (n:number) => Math.max(0,Math.min(1,n));
-const smooth = (n:number) => { const u = clamp01(n); return u*u*(3-2*u); };
-const TAU = Math.PI*2;
-export function trickFrame(kind:TrickKind, dir:number, at:number): TrickFrame {
-  const u = clamp01(at), f:TrickFrame = {pitch:0,roll:0,yaw:0,speed:1,climb:1,drop:0,side:0,lift:0};
-  if (kind === 'barrelRoll') {
-    const e = smooth(u), angle = TAU*e, B = STUNT.barrelRoll;
-    f.roll = -dir*angle; f.drop = B.sink*e;
-    f.side = dir*B.corkscrew*Math.sin(angle); f.lift = B.corkscrew*(1-Math.cos(angle));
-  } else if (kind === 'loop') {
-    // Symmetric in time, so the loop closes at its entry height.
-    f.pitch = TAU*u-.35*Math.sin(TAU*u);
-    f.speed = 1-(1-STUNT.loop.topSpeed)*(1-Math.cos(f.pitch))/2;
-  } else if (kind === 'splitS') {
-    const pull = Math.PI*smooth((u-.12)/.88);
-    f.roll = -dir*Math.PI*smooth(u/.45); f.pitch = -pull; f.yaw = Math.PI*smooth(u);
-    // Half roll, then half loop down: the height lost is fixed, the horizontal reach follows speed.
-    f.climb = 0; f.drop = STUNT.splitS.drop/2*(1-Math.cos(pull));
-  } else {
-    const S = STUNT.stall;
-    f.pitch = u < S.hang ? 1.15*smooth(u/S.hang) : u < .7 ? 1.15-2.05*smooth((u-S.hang)/(.7-S.hang)) : -.9*(1-smooth((u-.7)/.3));
-    f.speed = u < .75 ? 1-.7*smooth(u/.35) : .3+(S.exitSpeed-.3)*smooth((u-.75)/.25);
-    f.drop = S.drop*smooth((u-S.hang)/(1-S.hang));
+
+export interface Attitude { heading:number; pitch:number; bank:number }
+export interface FlightInput { roll:number; climb:number; hold:Hold; speed:number; bankResponse:number; pitchResponse:number }
+export class Aerobatics {
+  /** Camera yaw left over from a reversal; it eases back to zero so the view swings round instead of cutting. */
+  view = 0;
+  /** A pull that was refused because the plane is too slow to go over the top. */
+  stalled = false;
+  private rollHold = 0;
+  private pitchHold = 0;
+  private bankBase = 0;
+  private pitchBase = 0;
+  private reversal = false;
+  reset() { this.view = this.rollHold = this.pitchHold = this.bankBase = this.pitchBase = 0; this.stalled = this.reversal = false; }
+  /** True while the plane is outside its normal attitude limits. */
+  active(a:Attitude) {
+    const L = STUNT.limits;
+    return !!(this.rollHold || this.pitchHold) || Math.abs(a.bank-this.bankBase) > L.bank+.05 || Math.abs(a.pitch-this.pitchBase) > L.pitch+.05;
   }
-  return f;
-}
-/** Advances a trick by dt seconds and returns its pose and the distance flown this step. */
-export function stepTrick(trick:Trick, dt:number, heading:number, pitch:number, speed:number) {
-  const seconds = trickSeconds(trick.kind), before = trickFrame(trick.kind,trick.dir,trick.t/seconds);
-  trick.t = Math.min(seconds,trick.t+dt);
-  const frame = trickFrame(trick.kind,trick.dir,trick.t/seconds), angle = pitch+frame.pitch, distance = speed*frame.speed*dt;
-  return {frame, done:trick.t >= seconds, dx:-Math.sin(heading)*Math.cos(angle)*distance, dy:Math.sin(angle)*distance*frame.climb-(frame.drop-before.drop), dz:-Math.cos(heading)*Math.cos(angle)*distance};
+  /** Advances bank and pitch (and heading on a reversal). Returns the new attitude and the tricks completed this step. */
+  step(a:Attitude, input:FlightInput, dt:number): Attitude & {tricks:TrickKind[]} {
+    const L = STUNT.limits, tricks:TrickKind[] = [];
+    let {heading,pitch,bank} = a;
+
+    const rollHold = Math.sign(input.hold.roll);
+    if (rollHold) bank -= rollHold*STUNT.roll.rate*dt;
+    else {
+      // Let go: finish the way round that is nearer, so the plane never unwinds more than half a turn.
+      if (this.rollHold) this.bankBase = turns(bank)*TAU;
+      bank = damp(bank,this.bankBase-input.roll*L.bank,input.bankResponse,dt);
+    }
+    this.rollHold = rollHold;
+    const rolls = turns(bank);
+    if (rolls && Math.abs(bank-rolls*TAU) <= L.bank) {
+      for (let i=0;i<Math.abs(rolls);i++) tricks.push('barrelRoll');
+      bank -= rolls*TAU; this.bankBase = rollHold ? 0 : this.bankBase-rolls*TAU;
+    }
+
+    let pitchHold = Math.sign(input.hold.pitch);
+    this.stalled = pitchHold > 0 && pitch >= -L.pitch && pitch < HALF && input.speed < STUNT.loop.minSpeed;
+    if (this.stalled) pitchHold = 0;
+    if (pitchHold) pitch += pitchHold*STUNT.loop.rate*dt;
+    else {
+      if (this.pitchHold) {
+        const round = Math.abs(pitch), dir = Math.sign(pitch);
+        if (round <= HALF) this.pitchBase = 0;
+        else if (round >= TAU-HALF) this.pitchBase = dir*TAU;
+        else {
+          // Past vertical: the same attitude seen from the opposite heading is upside down, and the normal bank control rolls it upright.
+          this.reversal = dir < 0 && round >= STUNT.splitS.minTurn;
+          heading += Math.PI; pitch = dir*Math.PI-pitch; bank += bank <= this.bankBase ? Math.PI : -Math.PI;
+          this.pitchBase = 0;
+          this.view -= dir*Math.PI;
+        }
+      }
+      pitch = damp(pitch,this.pitchBase+input.climb*L.pitch,input.pitchResponse,dt);
+    }
+    this.pitchHold = pitchHold;
+    const loops = turns(pitch);
+    if (loops && Math.abs(pitch-loops*TAU) <= L.pitch) {
+      for (let i=0;i<Math.abs(loops);i++) tricks.push('loop');
+      pitch -= loops*TAU; this.pitchBase = pitchHold ? 0 : this.pitchBase-loops*TAU;
+    }
+
+    // A split S counts once the plane is upright again on the new heading.
+    if (this.reversal && !this.active({heading,pitch,bank})) { tricks.push('splitS'); this.reversal = false; }
+    this.view = damp(this.view,0,STUNT.viewSmoothing,dt);
+    return {heading,pitch,bank,tricks};
+  }
 }

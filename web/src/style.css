@@ -30,5 +30,5 @@ header,footer{z-index:7}
   header{padding:8px 12px}
   .instruments em{font-size:9px;margin-left:3px}
 }
-#flick-debug{position:absolute;left:40px;bottom:92px;margin:0;padding:10px 12px;border-radius:6px;background:#173c46d9;color:#e8f6df;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,'Noto Sans JP',monospace;pointer-events:none;white-space:pre;z-index:4}
-@media(max-width:850px),(max-height:600px){#flick-debug{left:12px;bottom:78px;font-size:9px;padding:6px 8px}}
+#stunt-debug{position:absolute;left:40px;bottom:92px;margin:0;padding:10px 12px;border-radius:6px;background:#173c46d9;color:#e8f6df;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,'Noto Sans JP',monospace;pointer-events:none;white-space:pre;z-index:4}
+@media(max-width:850px),(max-height:600px){#stunt-debug{left:12px;bottom:78px;font-size:9px;padding:6px 8px}}
