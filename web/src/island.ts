@@ -32,15 +32,18 @@ function terrain() {
     color.multiplyScalar(.94+.12*random(at, 1));
     colors.set([color.r, color.g, color.b], at);
   }
-  for (let row = 0, at = 0; row < rows; row++) for (let column = 0; column < columns; column++, at += 6) {
+  // Cells wholly under the sea are never seen, and they are most of the grid.
+  let used = 0;
+  for (let row = 0; row < rows; row++) for (let column = 0; column < columns; column++) {
     const a = row*(columns+1)+column, b = a+columns+1;
-    index.set([a, b, a+1, a+1, b, b+1], at);
+    if (Math.max(positions[a*3+1], positions[a*3+4], positions[b*3+1], positions[b*3+4]) < -1) continue;
+    index.set([a, b, a+1, a+1, b, b+1], used); used += 6;
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geometry.setIndex(new THREE.BufferAttribute(index, 1));
-  return new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 1 }));
+  geometry.setIndex(new THREE.BufferAttribute(index.subarray(0, used), 1));
+  return new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
 }
 
 function archGeometry(s: Extract<Solid, { kind: 'arch' }>) {
@@ -114,12 +117,12 @@ export class Island {
       }
     }
     add(new THREE.CircleGeometry(VOLCANO.floorRadius+8, 24).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({ color: 0xff7a33 }), VOLCANO.x, VOLCANO.floor+.8, VOLCANO.z);
-    this.scatter('trees', new THREE.ConeGeometry(1, 1, 5), new THREE.MeshStandardMaterial({ color: 0x3f7a5c, flatShading: true }), i => {
+    this.scatter('trees', new THREE.ConeGeometry(1, 1, 5, 1, true), new THREE.MeshLambertMaterial({ color: 0x3f7a5c, flatShading: true }), i => {
       const x = -1350+3100*random(i, 2), z = -1350+2750*random(i, 3), h = surfaceHeight(x, z), size = 4+6*random(i, 4);
       if (h < 9 || h > 150 || slopeAt(x, z) > .6 || Math.hypot(x-TOWN.x, z-TOWN.z) < TOWN.radius || nearStructure({ x, y: h+size, z }, size+8)) return null;
       return [x, h+size, z, size, size*2];
     });
-    this.scatter('rocks', new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0x8f8a78, flatShading: true }), i => {
+    this.scatter('rocks', new THREE.IcosahedronGeometry(1, 0), new THREE.MeshLambertMaterial({ color: 0x8f8a78, flatShading: true }), i => {
       const x = -1450+3300*random(i, 5), z = -1450+3000*random(i, 6), h = surfaceHeight(x, z), size = 2+5*random(i, 7);
       if (h < -5 || (h > 8 && slopeAt(x, z) < .6) || nearStructure({ x, y: Math.max(0, h), z }, size+20)) return null;
       return [x, Math.max(0, h)+size*.2, z, size, size*.7];
