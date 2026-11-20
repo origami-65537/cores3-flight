@@ -4,7 +4,7 @@ export const FEEL = {
   response: { device:20, bank:12, keyboardBank:5, pitch:9, keyboardPitch:4, turn:.9 },
   audio: { wind:.055, chime:.12, whoosh:.09, boost:.09, smoothing:.12, basePitch:660, streakStep:2, maxStreak:12 },
   hitstopMs:50, particleCount:60, particleSeconds:1, particleSpeed:34,
-  flyThroughPoints:100, rearmDistance:260, clearance:2, lookAheadSeconds:[.4,.8,1.2], radarRange:1500,
+  flyThroughPoints:100, rearmDistance:260, clearance:2, lookAheadSeconds:1.2, radarRange:1500,
   nearMiss: { ground:9, structure:12, cooldownMs:1800 },
   deviceCueCooldownMs:2000,
   scenery: { trees:1500, rocks:260, clouds:60 },

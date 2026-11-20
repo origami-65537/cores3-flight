@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CEILING, GRID, MIST, gateDirection, groundHeight, landmarks, launch, mist, terrainHeight, throughGate, touching, wrap, type Gate } from './world';
+import { CEILING, GRID, MIST, gateDirection, groundHeight, landmarks, launch, mist, pathHits, terrainHeight, throughGate, touching, wrap, type Gate } from './world';
 
 const at = (gate: Gate, along: number, side = 0, up = 0) => {
   const d = gateDirection(gate);
@@ -76,4 +76,16 @@ test('the ground the plane hits is the drawn surface, not the smooth height unde
   assert.ok(terrainHeight(rim.x, rim.z)-drawn > 5);
   assert.equal(touching({ ...rim, y: drawn+3 }, 2), null);
   assert.equal(touching({ ...rim, y: drawn+1 }, 2), 'ground');
+});
+
+test('the path ahead sees a thin beam from any distance and stays clear through an opening', () => {
+  const torii = landmarks.find(l => l.id === 'torii')!, bridge = landmarks.find(l => l.id === 'bridge')!;
+  const beam = torii.solids.find(s => s.kind === 'box')!, forward = gateDirection(torii.gate);
+  assert.ok(beam.kind === 'box');
+  for (let back = 6; back <= 44; back += .7) {
+    const from = { x: beam.x-forward.x*back, y: beam.y, z: beam.z-forward.z*back };
+    assert.equal(pathHits(from, forward, 44.6, 2), 'structure', `beam missed from ${back} m`);
+  }
+  for (const { gate } of [torii, bridge]) for (let back = 0; back <= 160; back += 7) assert.equal(pathHits(at(gate, -back, 0, 0), gateDirection(gate), 65, 2), null);
+  assert.equal(pathHits({ x: launch.x, y: 20, z: launch.z }, { x: 0, y: -.5, z: -Math.sqrt(.75) }, 65, 2), 'ground');
 });

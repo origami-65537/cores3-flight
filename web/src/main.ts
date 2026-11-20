@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Keyboard, CoreS3, wifiTarget } from './input';
-import { CEILING, groundHeight, landmarks, launch, mist, nearStructure, terrainHeight, throughGate, touching, wrap } from './world';
+import { CEILING, groundHeight, landmarks, launch, mist, nearStructure, pathHits, terrainHeight, throughGate, touching, wrap } from './world';
 import { Island } from './island';
 import { RenderQuality } from './render-quality';
 import { FEEL, fovFromSpeed, nearMiss } from './feel';
@@ -120,7 +120,7 @@ let started=false,ended=false,noticeUntil=0,fanfare=false,showStunts=false,stall
 const aero=new Aerobatics(), heldAxis={roll:0,pitch:0}, trickCounts:Record<TrickKind,number>={barrelRoll:0,loop:0,splitS:0};
 const position = new THREE.Vector3(launch.x,launch.y,launch.z);
 const found=new Set<string>(), armed=landmarks.map(()=>true);
-const previous = new THREE.Vector3(), forward = new THREE.Vector3(), ahead = new THREE.Vector3();
+const previous = new THREE.Vector3(), forward = new THREE.Vector3();
 const notice = el('notice'), warning = el('warning');
 function flash(s:string) {if (!ended) {notice.textContent=s; noticeUntil=performance.now()+2200;}}
 function takeoff() {audio.start(); started=true; el('flight-overlay').hidden=true;}
@@ -263,8 +263,7 @@ function animate() {
   if (notice.style.opacity!==opacity) notice.style.opacity=opacity;
   const flying=started && !ended, height=position.y-groundHeight(position.x,position.z)-FEEL.clearance;
   // Warn only when the path ahead really ends in something, so a clean pass under a bridge stays quiet.
-  let danger:ReturnType<typeof touching>=null;
-  for(const seconds of FEEL.lookAheadSeconds) danger??=touching(ahead.copy(position).addScaledVector(forward,speed*seconds),FEEL.clearance);
+  const danger=pathHits(position,forward,speed*FEEL.lookAheadSeconds,FEEL.clearance);
   const low=danger==='ground';
   if(flying && low && !wasLow && now-lastCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'pullup'}); lastCue=now;}
   wasLow=flying && low;

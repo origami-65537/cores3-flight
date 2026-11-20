@@ -123,6 +123,14 @@ export function touching(p: Point, margin: number): 'ground' | 'structure' | nul
   if (p.y < groundHeight(p.x, p.z)+margin) return 'ground';
   return solids.some(s => inside(s, p, margin)) ? 'structure' : null;
 }
+/** What a straight path of `distance` from `from` along the unit vector `direction` runs into first, checked closely enough that no beam is stepped over. */
+export function pathHits(from: Point, direction: Point, distance: number, margin: number): 'ground' | 'structure' | null {
+  for (let d = margin; d <= distance; d += margin*1.5) {
+    const hit = touching({ x: from.x+direction.x*d, y: from.y+direction.y*d, z: from.z+direction.z*d }, margin);
+    if (hit) return hit;
+  }
+  return null;
+}
 export function nearStructure(p: Point, margin: number) { return solids.some(s => inside(s, p, margin)); }
 
 /** True when the move from `from` to `to` passes through the opening, in either direction. */
