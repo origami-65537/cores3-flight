@@ -10,11 +10,10 @@ import './style.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <header><div class="brand"><span class="mark">↗</span><div>空路 <span class="latin">SKYLINE</span><small>CORES3 FLIGHT LAB / 01</small></div></div><div class="connection"><i></i><span id="status">キーボード / Keyboard ready</span><span id="imu"></span><button id="connect">USBで接続 ↗</button><button id="wifi">Wi-Fiで接続 ↗</button></div></header>
-<aside class="mission"><div class="eyebrow">RING RUN · リングコース</div><h1>風をつかまえよう。</h1><p>金色のリングに照準を合わせよう。</p><div class="tag">◉ &nbsp; RING +100 PTS &nbsp; / &nbsp; 地面に注意<br>CoreS3: ひねる → ロール · 手前に引く → ループ · 奥へ押す → スプリットS</div></aside>
-<section class="instruments"><div><label>SCORE / スコア</label><strong id="score">0000</strong></div><div><label>AIRSPEED</label><strong><span id="speed">0</span><em>m/s</em></strong></div><div><label>ALTITUDE</label><strong><span id="alt">0</span><em>m</em></strong></div><div><label>FLIGHT TIME</label><strong id="time">00:00</strong></div></section>
+<section class="instruments"><div><label>SCORE</label><strong id="score">0000</strong></div><div><label>SPEED</label><strong><span id="speed">0</span><em>m/s</em></strong></div><div><label>ALT</label><strong><span id="alt">0</span><em>m</em></strong></div></section>
 <pre id="flick-debug" hidden></pre><div class="reticle" aria-hidden="true">⊕</div><div id="notice" role="status"></div>
 <div id="warning" role="status" hidden></div><div id="ring-guide" hidden><span class="guide-symbol" aria-hidden="true">➤</span><span class="guide-distance"></span></div><div id="crash-flash"></div>
-<div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">光のリングをくぐろう<small>Fly through the glowing rings</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>Shift / Space</kbd> ブースト · Boost</li><li><kbd>J / L</kbd> バレルロール 左 / 右 · Barrel roll +100</li><li><kbd>I</kbd> ループ · Loop +300（35 m/s 以上）</li><li><kbd>K</kbd> スプリットS · Split S +250（高度 −40 m）</li><li><kbd>R</kbd> リスタート · Restart</li></ul><p>地面・岩柱に衝突するとフライト終了。<br>Ground & rock pillars end the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
+<div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">光のリングをくぐろう<small>Fly through the glowing rings</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>Shift / Space</kbd> ブースト · Boost</li><li><kbd>J / L</kbd> バレルロール 左 / 右 · Barrel roll +100</li><li><kbd>I</kbd> ループ · Loop +300（35 m/s 以上）</li><li><kbd>K</kbd> スプリットS · Split S +250（高度 −40 m）</li><li><kbd>R</kbd> リスタート · Restart</li><li><kbd>CoreS3</kbd> ひねる → ロール · 手前に引く → ループ · 奥へ押す → スプリットS</li></ul><p>地面・岩柱に衝突するとフライト終了。<br>Ground & rock pillars end the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
 <footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>SHIFT / SPACE</kbd> Boost</span><span><kbd>J L · I · K</kbd> ロール / ループ / スプリットS</span></div><div class="actions"><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button><button id="fullscreen" type="button" aria-pressed="false" hidden>全画面</button></div></footer>`;
 const scene = new THREE.Scene();
 document.querySelector('.flight-card ul')!.insertAdjacentHTML('beforeend','<li><kbd>M</kbd> Mute / Unmute</li>');
@@ -166,7 +165,6 @@ const flickNames:Record<Gesture,string>={twistLeft:'← TWIST',twistRight:'TWIST
 let peakRoll=0, peakPitch=0;
 setInterval(()=>{
   const panel=el('flick-debug'), d=device.flickDebug();
-  if(!flicksToggled)showFlicks=device.connected;
   panel.hidden=!showFlicks;
   if(!showFlicks)return;
   // Peak hold makes a 100 ms flick readable on a panel that refreshes ten times a second.
@@ -177,15 +175,14 @@ setInterval(()=>{
   showText(panel,[`FLICK DEBUG · G で表示切替`,state,`roll  ${sign(t.roll)}°  ${sign(d.rollRate)}°/s  peak ${peakRoll.toFixed(0).padStart(3)}`,`pitch ${sign(t.pitch)}°  ${sign(d.pitchRate)}°/s  peak ${peakPitch.toFixed(0).padStart(3)}`,`need ≥${f.rate}°/s · twist ${f.rollSwing}° · pull/push ${f.pitchSwing}°`,`last  ${last}`,`count ←${d.counts.twistLeft} →${d.counts.twistRight} pull ${d.counts.pull} push ${d.counts.push}`,`reject ${d.rejected||'—'}`,`trick ${trick?`${TRICK_NAMES[trick.kind]} ${(trick.t/trickSeconds(trick.kind)*100).toFixed(0)}%`:'—'}`].join('\n'));
 },100);
 setInterval(()=>{const t=device.telemetry(); el('imu').textContent=device.connected?(t.hz?`傾き R${t.roll.toFixed(0)}° P${t.pitch.toFixed(0)}° · ${t.hz}Hz`:'姿勢データなし / No IMU data'):'';},250);
-device.onCalibration=ready=>flash(ready?'センター設定 / Calibrated':'姿勢をキープ / Hold still to center');
+device.onCalibration=ready=>flash(ready?'センター設定':'姿勢をキープ');
 function center() {
-  if (!device.calibrate()) flash(device.connected?'姿勢データ待ち / Waiting for motion data':'CoreS3 を接続してください / Connect CoreS3 first');
+  if (!device.calibrate()) flash(device.connected?'姿勢データ待ち':'CoreS3 を接続してください');
 }
 el('center').onclick=center;
-el('app').querySelector('.instruments')!.insertAdjacentHTML('beforeend','<div><label>RINGS</label><strong id="ring-count">0/40</strong></div><div><label>THROTTLE</label><strong><span id="throttle">40</span><em>%</em></strong></div>');
 const minSpeed = 22, speedRange = 38, cruiseThrottle = .4, cruiseSpeed = minSpeed+speedRange*cruiseThrottle;
 let heading=0,pitch=0,bank=0,speed=cruiseSpeed,throttle=cruiseThrottle,score=0,elapsed=0,nextGate=0;
-let started=false,ended=false,noticeUntil=0,ringsHit=0,trick:Trick|null=null,showFlicks=false,flicksToggled=false;
+let started=false,ended=false,noticeUntil=0,ringsHit=0,trick:Trick|null=null,showFlicks=false;
 const position = new THREE.Vector3(launch.x,launch.y,launch.z);
 const previous = new THREE.Vector3(), forward = new THREE.Vector3(), aim = new THREE.Vector3();
 const reticle = document.querySelector<HTMLElement>('.reticle')!;
@@ -196,7 +193,7 @@ const guideSymbol = ringGuide.querySelector<HTMLElement>('.guide-symbol')!;
 const guideDistance = ringGuide.querySelector<HTMLElement>('.guide-distance')!;
 const guideLocal = new THREE.Vector3(), guideProjected = new THREE.Vector3();
 function flash(s:string) {if (!ended) {notice.textContent=s; noticeUntil=performance.now()+2200;}}
-function takeoff() {audio.start(); started=true; el('flight-overlay').hidden=true; flash('照準を金色のリングへ / Aim at gold');}
+function takeoff() {audio.start(); started=true; el('flight-overlay').hidden=true;}
 function resetFlight() {
   position.set(launch.x,launch.y,launch.z);
   heading=pitch=bank=score=elapsed=nextGate=ringsHit=0; trick=null;
@@ -213,7 +210,7 @@ function reset() {resetFlight(); takeoff();}
 function startTrick(gesture:Gesture) {
   if(!started || ended || trick)return;
   trick=trickFor(gesture,speed);
-  flash(trick.kind==='stall'?`失速！ ${STUNT.loop.minSpeed} m/s 必要 / STALL · too slow to loop`:TRICK_NAMES[trick.kind]);
+  if(trick.kind==='stall')flash(`失速！ ${STUNT.loop.minSpeed} m/s 必要`);
 }
 function formatTime() {return `${Math.floor(elapsed/60).toString().padStart(2,'0')}:${Math.floor(elapsed%60).toString().padStart(2,'0')}`;}
 function finish(cause:'ground'|'pillar'|'complete') {
@@ -234,12 +231,11 @@ el('reset').onclick=reset; window.addEventListener('keydown',e=>{
   if(e.code==='KeyC')center();
   const stunt=({KeyJ:'twistLeft',KeyL:'twistRight',KeyI:'pull',KeyK:'push'} as Record<string,Gesture>)[e.code];
   if(stunt)startTrick(stunt);
-  if(e.code==='KeyG') {showFlicks=!showFlicks; flicksToggled=true;}
+  if(e.code==='KeyG')showFlicks=!showFlicks;
   if(e.code==='KeyM') {audio.toggle(); flash(audio.muted?'Audio muted':'Audio on');}
 });
 const clock=new THREE.Clock(); let radarTimer=0;
-const scoreDisplay=el('score'), speedDisplay=el('speed'), altDisplay=el('alt'), timeDisplay=el('time');
-const ringCountDisplay=el('ring-count'), throttleDisplay=el('throttle');
+const scoreDisplay=el('score'), speedDisplay=el('speed'), altDisplay=el('alt');
 const fullscreen=el('fullscreen');
 fullscreen.hidden=!document.fullscreenEnabled;
 fullscreen.onclick=async () => {
@@ -260,6 +256,13 @@ function showText(element:HTMLElement,value:string) {
   if (element.textContent!==value) element.textContent=value;
 }
 const behind=new THREE.Vector3(), lookTarget=new THREE.Vector3(), up=new THREE.Vector3(0,1,0);
+// Header and footer stay off screen during play; moving the mouse brings them back for a moment.
+let playing=false, peekTimer=0;
+window.addEventListener('pointermove',e=>{
+  if(e.pointerType!=='mouse')return;
+  document.body.classList.add('peek'); clearTimeout(peekTimer);
+  peekTimer=window.setTimeout(()=>document.body.classList.remove('peek'),2500);
+});
 function animate() {
   requestAnimationFrame(animate);
   const frameTime=clock.getDelta();
@@ -304,8 +307,8 @@ function animate() {
       const result = crossGate(course[nextGate],previous,position);
       if (result) {
         const index=nextGate++; rings[index].visible=false;
-        if (result==='hit') {score+=100; ringsHit++; reward(index); flash('リング通過 +100 / Nice flight');}
-        else {streak=0; flash('リングを逃した / Missed · Keep going');}
+        if (result==='hit') {score+=100; ringsHit++; reward(index); flash('+100');}
+        else {streak=0; flash('MISS');}
         if (nextGate===course.length) finish('complete');
         else rings[nextGate].material=activeRing;
       }
@@ -337,6 +340,7 @@ function animate() {
   if(!reducedMotion.matches) {camera.position.x+=Math.sin(now*.047)*boostMix*FEEL.camera.shake; camera.position.y+=Math.cos(now*.063)*boostMix*FEEL.camera.shake;}
   camera.lookAt(lookTarget);
   ringGuide.hidden = reticle.hidden = !started || ended;
+  if(playing!==(started && !ended))document.body.classList.toggle('play',playing=started && !ended);
   if (started && !ended) {
     const target = rings[nextGate].position;
     const intercept = (target.z-position.z)/forward.z;
@@ -349,9 +353,6 @@ function animate() {
   showText(scoreDisplay,String(score).padStart(4,'0'));
   showText(speedDisplay,airspeed.toFixed(0));
   showText(altDisplay,Math.max(0,position.y).toFixed(0));
-  showText(timeDisplay,formatTime());
-  showText(ringCountDisplay,`${ringsHit}/${course.length}`);
-  showText(throttleDisplay,(throttle*100).toFixed(0));
   const opacity=started && !ended && performance.now()<noticeUntil?'1':'0';
   if (notice.style.opacity!==opacity) notice.style.opacity=opacity;
   const low=position.y<12 || position.y<25 && Math.sin(pitch)<0;
@@ -368,7 +369,7 @@ function animate() {
     return position.y<p.h+2 && ahead>0 && ahead-p.r<60 && Math.abs(side)<p.r+12;
   });
   warning.hidden=!started || ended || (!low && !obstacle);
-  showText(warning,low?'PULL UP · W / ↑':'OBSTACLE · A / D で回避');
+  showText(warning,low?'PULL UP':'OBSTACLE');
   radarTimer+=dt; if(radarTimer>=.1) {radarTimer=0;device.send({t:'radar',h:THREE.MathUtils.radToDeg(heading),o:rings.filter(r=>r.visible && r.position.distanceTo(position)<1200).sort((a,b)=>a.position.distanceToSquared(position)-b.position.distanceToSquared(position)).slice(0,16).map(r=>[Math.round(r.position.x-position.x),Math.round(r.position.z-position.z)]),score,speed:Math.round(speed),alt:Math.round(position.y)});}
   renderer.render(scene,camera);
 }
@@ -389,5 +390,5 @@ function updateRingGuide(target: THREE.Vector3) {
   placeRingGuide(innerWidth/2+x,innerHeight/2+y+(onScreen?30:0));
   guideSymbol.hidden=onScreen;
   guideSymbol.style.transform=onScreen?'':`rotate(${Math.atan2(y,x)}rad)`;
-  showText(guideDistance,`NEXT ${nextGate+1}/${course.length} · ${Math.round(target.distanceTo(position))} m`);
+  showText(guideDistance,`${nextGate+1}/${course.length} · ${Math.round(target.distanceTo(position))} m`);
 }
