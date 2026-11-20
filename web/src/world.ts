@@ -92,6 +92,8 @@ export function surfaceHeight(x: number, z: number): number {
   return corner+(1-u)*(far-corner)+(1-v)*(side-corner);
 }
 export const groundHeight = (x: number, z: number) => Math.max(0, surfaceHeight(x, z));
+/** True where open water is drawn, rather than land. */
+export const overSea = (x: number, z: number) => surfaceHeight(x, z) < 0;
 
 function build(): Landmark[] {
   const light = { x: -539, z: 782 }, lightBase = surfaceHeight(light.x, light.z);
