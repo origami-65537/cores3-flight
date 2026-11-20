@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CEILING, GRID, MIST, gateDirection, groundHeight, landmarks, launch, mist, pathHits, terrainHeight, throughGate, touching, wrap, type Gate } from './world';
+import { CEILING, COVE, GRID, MIST, PIER, WATERFALL, gateDirection, groundHeight, landmarks, launch, mist, pathHits, surfaceHeight, terrainHeight, throughGate, touching, wrap, type Gate } from './world';
 
 const at = (gate: Gate, along: number, side = 0, up = 0) => {
   const d = gateDirection(gate);
@@ -29,6 +29,17 @@ test('there are three to five landmarks, spread out, each with a clear way throu
       assert.ok(throughGate(gate, at(gate, 1, side, up), at(gate, -1, side, up)), `${id} backwards`);
     }
   }
+});
+
+test('the harbor opens to the sea and the pier is a solid obstacle', () => {
+  for (let z = COVE.z-COVE.rz+24; z < launch.z; z += 12) assert.ok(surfaceHeight(COVE.x, z) <= 0);
+  assert.ok(surfaceHeight(PIER.x, PIER.z0) > 0, 'pier connects to shore');
+  const pier = { x: PIER.x, y: PIER.height, z: (PIER.z0+PIER.z1)/2 };
+  assert.ok(surfaceHeight(pier.x, pier.z) < 0);
+  assert.equal(touching(pier, 2), 'structure');
+  assert.equal(touching({ ...pier, y: 12 }, 2), null);
+  assert.ok(surfaceHeight(WATERFALL.x, WATERFALL.z0) > 90);
+  assert.ok(surfaceHeight(WATERFALL.x, WATERFALL.z1) < 0);
 });
 
 test('only a pass inside the opening counts', () => {

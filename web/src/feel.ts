@@ -7,7 +7,7 @@ export const FEEL = {
   flyThroughPoints:100, rearmDistance:260, clearance:2, lookAheadSeconds:1.2, radarRange:1500,
   nearMiss: { ground:9, structure:12, cooldownMs:1800 },
   deviceCueCooldownMs:2000,
-  scenery: { trees:1500, rocks:260, clouds:60 },
+  scenery: { trees:925, rocks:240, clouds:24 },
   speedLines: { count:36, opacity:.35, length:8 },
 } as const;
 const clamp = (n:number) => Math.max(0,Math.min(1,n));

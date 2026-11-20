@@ -1,6 +1,6 @@
 # 空路 / SKYLINE — CoreS3 Flight
 
-M5Stack CoreS3 を傾けて、PC の空を飛ぶ小さな 3D フライトゲーム。デバイスなしでもキーボードだけで遊べます。前進は自動。舞台は小さな島で、遠くから見える 5 つの名所（灯台の岬とアーチ岩、吊り橋、海の鳥居、火山、ツインタワー）それぞれに、くぐり抜けられる場所があります。くぐるたびに +100 点、光のかけらが舞って島の時間帯が変わります。海・地面・建物への衝突でフライト終了です。
+M5Stack CoreS3 を傾けて、PC の空を飛ぶ小さな 3D フライトゲーム。デバイスなしでもキーボードだけで遊べます。前進は自動。舞台は、入り江に港町があり、崖から滝が流れ落ちるローポリの島です。遠くから見える 5 つの名所（灯台とアーチ岩の入り江、吊り橋、海の鳥居、雪をかぶった火山、ツインタワー）それぞれに、くぐり抜けられる場所があります。くぐるたびに +100 点、光のかけらが舞って島の時間帯が変わります。海・地面・建物への衝突でフライト終了です。
 
 ## ブラウザで遊ぶ
 
@@ -164,7 +164,7 @@ pio run -t buildfs
 
 `web/` は Vite + TypeScript + three.js、`firmware/` は PlatformIO + Arduino + M5Unified + ArduinoJson。CI は両方をビルドします。main への push で GitHub Pages に自動デプロイ（管理者権限・リポジトリの Pages 利用許可が必要）。Vite の base は `./`。本体無しでもブラウザ版は動きますが、実機の IMU 軸・タッチ・USB は実機での最終調整を推奨します。
 
-English: free flight over a small island with keyboard or CoreS3 motion controls. Five landmarks (lighthouse cape with a sea arch, suspension bridge, torii in the sea, volcano, twin towers) each have a way under or through; flying through scores +100, scatters light and moves the time of day on, with no text or markers on screen. Hitting the sea, the land or a structure ends the flight; press R to retry. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.
+English: free flight over a low-poly island with keyboard or CoreS3 motion controls. Five landmarks (lighthouse cove with a sea arch, suspension bridge, torii in the sea, snow-capped volcano, twin towers) each have a way under or through; flying through scores +100, scatters light and moves the time of day on, with no text or markers on screen. Hitting the sea, the land or a structure ends the flight; press R to retry. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.
 
 The UI fonts in `web/public/fonts/` are SIL OFL subsets of Space Grotesk (Latin) and Noto Sans JP (Japanese game text). Update the Japanese subset when adding new UI characters: `pyftsubset 'NotoSansJP[wght].ttf' --text-file=chars.txt --flavor=woff2 --output-file=web/public/fonts/NotoSansJP-UI.woff2` (fonttools and brotli), with every Japanese character used in `web/src` and `web/index.html` in `chars.txt`.
 
