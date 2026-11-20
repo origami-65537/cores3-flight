@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Keyboard, CoreS3, wifiTarget } from './input';
 import { CEILING, groundHeight, landmarks, launch, mist, nearStructure, pathHits, terrainHeight, throughGate, touching, wrap } from './world';
 import { Island } from './island';
+import { buildAircraft } from './aircraft';
 import { RenderQuality } from './render-quality';
 import { FEEL, fovFromSpeed, nearMiss } from './feel';
 import { FlightAudio } from './audio';
@@ -65,18 +66,7 @@ function reward() {
   if(found.size===landmarks.length && !fanfare) {fanfare=true; for(const step of [1,2,3])setTimeout(()=>audio.chime(found.size+step*2),step*140);}
   timeOfDay++;
 }
-const plane = new THREE.Group();
-const cream = new THREE.MeshStandardMaterial({color:0xfff3d8,metalness:.25,roughness:.4});
-const orange = new THREE.MeshStandardMaterial({color:0xf2744f,roughness:.4});
-function part(geometry:THREE.BufferGeometry, material:THREE.Material, x:number,y:number,z:number) {
-  const mesh = new THREE.Mesh(geometry,material); mesh.position.set(x,y,z); plane.add(mesh); return mesh;
-}
-const body=part(new THREE.ConeGeometry(1.05,8,8),cream,0,0,0); body.rotation.x=-Math.PI/2;
-part(new THREE.BoxGeometry(12,.22,2.1),cream,0,-.1,1);
-part(new THREE.BoxGeometry(4.5,.2,1.3),orange,0,.4,3);
-part(new THREE.BoxGeometry(.2,2,1.8),orange,0,1.1,2.7);
-const cockpit=part(new THREE.SphereGeometry(.75,12,8),new THREE.MeshStandardMaterial({color:0x183b50,metalness:.6,roughness:.15}),0,.65,-.6); cockpit.scale.z=1.8;
-part(new THREE.BoxGeometry(1.3,.24,2.15),orange,-4.8,-.08,1); part(new THREE.BoxGeometry(1.3,.24,2.15),orange,4.8,-.08,1);
+const {model:plane, updatePropeller}=buildAircraft();
 scene.add(plane);
 const keyboard = new Keyboard(), device = new CoreS3();
 const el = (id:string) => document.getElementById(id)!;
@@ -234,6 +224,7 @@ function animate() {
   }
   const airspeed=speed, view=heading+aero.view, stunting=aero.active({heading,pitch,bank});
   plane.position.copy(position); plane.rotation.set(pitch,heading,bank,'YXZ');
+  updatePropeller(dt, started && !ended && !reducedMotion.matches ? airspeed : 0);
   audio.update(airspeed,started && !ended);
   boostMix=THREE.MathUtils.damp(boostMix,boosting?1:0,FEEL.camera.boostSmoothing,visualDt);
   lineMaterial.opacity=boostMix*FEEL.speedLines.opacity;
