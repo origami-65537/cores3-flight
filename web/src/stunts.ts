@@ -5,7 +5,8 @@
 export const STUNT = {
   // Device tilt in degrees. 30° is already full normal deflection, so a hold has to go clearly past it.
   // A roll needs a deeper tilt than a pull or push: hard turns already lean the device well past 50°.
-  hold: { roll:{ start:65, release:50 }, pitch:{ start:50, release:38 } },
+  // floor is the lowest the roll threshold may come down to for a pose centred off level; below it a hard turn would roll.
+  hold: { roll:{ start:65, release:50, floor:45 }, pitch:{ start:50, release:38 } },
   limits: { bank:.78, pitch:.49 },
   // Rates are radians per second while held: one roll takes 1.2 s, one loop 2.4 s.
   roll: { rate:5.2, points:100 },
@@ -35,10 +36,10 @@ export class HoldDetector {
   /**
    * Tilt in degrees from the centred pose. One axis at a time: a hard pull also disturbs the other reading.
    * rollReach is the largest roll the device can report on the side it is tilted to: it reports at most 90° from level,
-   * so a pose centred off level leaves less than that, and the roll threshold comes down to stay reachable.
+   * so a pose centred off level leaves less than that, and the roll threshold comes down (as far as its floor) to stay reachable.
    */
   update(roll:number, pitch:number, rollReach=90): Hold {
-    const rollStart = Math.min(STUNT.hold.roll.start,rollReach-10);
+    const rollStart = Math.max(STUNT.hold.roll.floor,Math.min(STUNT.hold.roll.start,rollReach-10));
     const H = {roll:{start:rollStart, release:rollStart-(STUNT.hold.roll.start-STUNT.hold.roll.release)}, pitch:STUNT.hold.pitch}, tilt = {roll, pitch};
     if (this.axis && tilt[this.axis]*this.sign < H[this.axis].release) this.axis = null;
     if (!this.axis) {
