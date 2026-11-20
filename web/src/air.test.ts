@@ -49,9 +49,17 @@ test('a loop held from cruise speed still completes', () => {
   for (let t = 0; t < 4; t += dt) {
     const flown = aero.step(attitude,{ roll:0, climb:0, hold:{ roll:0, pitch:1 }, speed, bankResponse:5, pitchResponse:4 },dt);
     attitude = flown; tricks.push(...flown.tricks);
-    speed = momentum.step(speed,0,cruise,0,dt).speed-STUNT.gravity*steepness(attitude.pitch)*dt;
+    speed = momentum.step(speed,attitude.pitch,cruise,0,dt,true).speed-STUNT.gravity*steepness(attitude.pitch)*dt;
   }
   assert.deepEqual(tricks, ['loop']);
+});
+
+test('holding the nose further down after a dive gives no surge and keeps the height lost', () => {
+  const momentum = new Momentum(), dive = fly(momentum,cruise,-STUNT.limits.pitch,4);
+  let speed = dive.speed, pulledOut = false;
+  for (let t = 0; t < .5; t += dt) { const next = momentum.step(speed,-1.2,cruise,0,dt,true); speed = next.speed; pulledOut ||= next.pulledOut; }
+  assert.equal(pulledOut, false);
+  assert.ok(fly(momentum,speed,.05,AIR.pullOut.seconds).pulledOut);
 });
 
 test('flying low along the coast raises the cruise speed', () => {
