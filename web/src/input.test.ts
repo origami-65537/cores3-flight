@@ -168,6 +168,13 @@ test('holding the device past the normal tilt range reports a hold on one axis u
     a.deepEqual(await pose(-35, -12), {roll:0, pitch:-1});
     a.equal(device.calibrate(), true);
     a.equal(device.sample(.02).hold, undefined, 'no hold while centering');
+    // Centred with the right edge 30 degrees down, the device can only report 60 more degrees to the right.
+    for (let i = 0; i < 12; i++) await frame(17, 30);
+    a.deepEqual(await pose(17, 76), undefined);
+    a.deepEqual(await pose(17, 84), {roll:1, pitch:0}, 'the roll threshold comes down so it stays reachable');
+    a.deepEqual(await pose(17, 30), undefined);
+    a.deepEqual(await pose(17, -30), undefined, 'the left side still needs the full 65 degrees');
+    a.deepEqual(await pose(17, -36), {roll:-1, pitch:0});
   });
 });
 

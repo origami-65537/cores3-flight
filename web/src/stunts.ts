@@ -32,9 +32,14 @@ export class HoldDetector {
   private axis: 'roll' | 'pitch' | null = null;
   private sign = 0;
   reset() { this.axis = null; }
-  /** Tilt in degrees from the centred pose. One axis at a time: a hard pull also disturbs the other reading. */
-  update(roll:number, pitch:number): Hold {
-    const H = STUNT.hold, tilt = {roll, pitch};
+  /**
+   * Tilt in degrees from the centred pose. One axis at a time: a hard pull also disturbs the other reading.
+   * rollReach is the largest roll the device can report on the side it is tilted to: it reports at most 90° from level,
+   * so a pose centred off level leaves less than that, and the roll threshold comes down to stay reachable.
+   */
+  update(roll:number, pitch:number, rollReach=90): Hold {
+    const rollStart = Math.min(STUNT.hold.roll.start,rollReach-10);
+    const H = {roll:{start:rollStart, release:rollStart-(STUNT.hold.roll.start-STUNT.hold.roll.release)}, pitch:STUNT.hold.pitch}, tilt = {roll, pitch};
     if (this.axis && tilt[this.axis]*this.sign < H[this.axis].release) this.axis = null;
     if (!this.axis) {
       // How far each axis is past its own threshold; the one further past wins.

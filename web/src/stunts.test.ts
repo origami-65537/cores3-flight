@@ -34,6 +34,11 @@ test('a roll hold starts at 65 degrees and ends below 50; a pull or push starts 
   holds.reset();
   a.deepEqual(holds.update(-70,20), {roll:-1, pitch:0});
   holds.reset();
+  a.deepEqual(holds.update(48,0,60), none, 'centred 30 degrees off level: only 60 degrees of roll are left on that side');
+  a.deepEqual(holds.update(52,0,60), {roll:1, pitch:0}, 'so the roll starts 10 degrees short of what the device can report');
+  a.deepEqual(holds.update(36,0,60), {roll:1, pitch:0});
+  a.deepEqual(holds.update(34,0,60), none);
+  holds.reset();
   a.deepEqual(holds.update(60,52), {roll:0, pitch:1}, 'only the pull is past its threshold');
   holds.reset();
   a.deepEqual(holds.update(80,55), {roll:1, pitch:0}, 'both are past: the roll is further past its own threshold');
