@@ -5,7 +5,8 @@ import { groundHeight, type Point } from './world';
 export function tracerStyle(lift:number, distance:number) {
   const warmth = Math.max(0,Math.min(1,lift/15));
   const fade = Math.max(0,Math.min(1,(250-distance)/65));
-  return { warmth, brightness:(.22+.6*warmth)*fade, trail:.35+.3*warmth };
+  const nearby = Math.max(0,1-distance/120);
+  return { warmth, brightness:(.5+.35*warmth+.15*nearby)*fade, trail:.95-.35*warmth };
 }
 
 export function recycleTracer(p:Point, center:Point, forward:Point) {
@@ -16,23 +17,23 @@ export function recycleTracer(p:Point, center:Point, forward:Point) {
 export class AirVisuals {
   private readonly count = 1600;
   private readonly positions = new Float32Array(this.count*6);
-  private readonly colors = new Float32Array(this.count*6);
+  private readonly colors = new Float32Array(this.count*8);
   private readonly velocity = new Float32Array(this.count*3);
   private readonly motes = Array.from({length:this.count},() => new THREE.Vector3(Infinity,0,0));
   private readonly ground = new Float32Array(this.count);
   private readonly geometry = new THREE.BufferGeometry();
   private readonly lines:THREE.LineSegments;
-  private readonly cushionPositions = new Float32Array(96*6);
+  private readonly cushionPositions = new Float32Array(256*6);
   private readonly cushionGeometry = new THREE.BufferGeometry();
   private readonly cushion:THREE.LineSegments<THREE.BufferGeometry,THREE.LineBasicMaterial>;
   private frame = 0;
   constructor(private readonly scene:THREE.Scene) {
     this.geometry.setAttribute('position',new THREE.BufferAttribute(this.positions,3).setUsage(THREE.DynamicDrawUsage));
-    this.geometry.setAttribute('color',new THREE.BufferAttribute(this.colors,3).setUsage(THREE.DynamicDrawUsage));
-    this.lines = new THREE.LineSegments(this.geometry,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:.55,depthWrite:false,blending:THREE.AdditiveBlending}));
+    this.geometry.setAttribute('color',new THREE.BufferAttribute(this.colors,4).setUsage(THREE.DynamicDrawUsage));
+    this.lines = new THREE.LineSegments(this.geometry,new THREE.LineBasicMaterial({vertexColors:true,transparent:true,depthWrite:false}));
     this.lines.frustumCulled=false; scene.add(this.lines);
     this.cushionGeometry.setAttribute('position',new THREE.BufferAttribute(this.cushionPositions,3).setUsage(THREE.DynamicDrawUsage));
-    this.cushion = new THREE.LineSegments(this.cushionGeometry,new THREE.LineBasicMaterial({color:0xe6d9ad,transparent:true,opacity:0,depthWrite:false}));
+    this.cushion = new THREE.LineSegments(this.cushionGeometry,new THREE.LineBasicMaterial({color:0xb2fff0,transparent:true,opacity:0,depthWrite:false}));
     this.cushion.frustumCulled=false; scene.add(this.cushion);
   }
 
@@ -44,7 +45,10 @@ export class AirVisuals {
     for(let i=0;i<count;i++) {
       const p=this.motes[i], j=i*3, k=i*6;
       const recycled=recycleTracer(p,center,forward);
-      if(recycled) p.set(center.x+(Math.random()-.5)*500,Math.max(2,center.y+(Math.random()-.5)*500),center.z+(Math.random()-.5)*500);
+      if(recycled) {
+        const span=i%2?500:220;
+        p.set(center.x+(Math.random()-.5)*span,Math.max(2,center.y+(Math.random()-.5)*span),center.z+(Math.random()-.5)*span);
+      }
       if(recycled || i%12===this.frame%12) {
         const breeze=wind(p,time);
         this.velocity.set([breeze.x,updraft(p),breeze.z],j);
@@ -54,19 +58,20 @@ export class AirVisuals {
       const style=tracerStyle(this.velocity[j+1],Math.hypot(p.x-center.x,p.y-center.y,p.z-center.z));
       const light=p.y>this.ground[i]?style.brightness:0;
       this.positions.set([p.x,p.y,p.z,p.x-this.velocity[j]*style.trail,p.y-this.velocity[j+1]*style.trail,p.z-this.velocity[j+2]*style.trail],k);
-      this.colors.set([light,light*(1-.18*style.warmth),light*(1-.48*style.warmth),light*.3,light*.3,light*.28],k);
+      const green=1-.4*style.warmth, blue=1-.8*style.warmth;
+      this.colors.set([1,green,blue,light,1,green,blue,0],i*8);
     }
     this.geometry.attributes.position.needsUpdate=true; this.geometry.attributes.color.needsUpdate=true;
     const coast=coastEffect(center);
     this.cushion.visible=coast>0;
     if(coast>0) {
-      this.cushion.material.opacity=.32*coast;
+      this.cushion.material.opacity=.65*coast;
       const sideX=-forward.z, sideZ=forward.x;
-      for(let i=0;i<96;i++) {
-        const back=(i*.618+time*1.8)%1*55, side=Math.sin(i*127.1)*(3+back*.19);
+      for(let i=0;i<256;i++) {
+        const back=-18+(i*.618+time*1.8)%1*40, side=Math.sin(i*127.1)*(7+(back+18)*.14);
         const x=center.x-forward.x*back+sideX*side, z=center.z-forward.z*back+sideZ*side;
-        const y=groundHeight(x,z)+.5+(i%5)*.19;
-        this.cushionPositions.set([x,y,z,x-forward.x*(2+coast*5),y,z-forward.z*(2+coast*5)],i*6);
+        const y=groundHeight(x,z)+.5+(i%5)*.12;
+        this.cushionPositions.set([x,y,z,x-forward.x*(3+coast*6),y,z-forward.z*(3+coast*6)],i*6);
       }
       this.cushionGeometry.attributes.position.needsUpdate=true;
     }

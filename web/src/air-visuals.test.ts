@@ -10,6 +10,8 @@ test('lift warms and brightens tracers, distance fades the volume boundary',() =
   a.equal(tracerStyle(15,250).brightness,0);
   a.equal(tracerStyle(-5,500).brightness,0);
   a.equal(tracerStyle(100,0).warmth,1);
+  a.ok(tracerStyle(0,20).brightness>tracerStyle(0,150).brightness);
+  a.ok(tracerStyle(0,20).trail>.8);
 });
 
 test('recycles outside the volume and far behind, not nearby or ahead',() => {
@@ -28,6 +30,15 @@ test('quality limits the pool, coast cushion vanishes away from shore and reduce
   a.equal(cushion.visible,true);
   a.equal(tracers.geometry.drawRange.count,3200);
   a.ok(Array.from(tracers.geometry.attributes.position.array).every(Number.isFinite));
+  const colors=tracers.geometry.attributes.color;
+  a.equal(colors.itemSize,4);
+  for(let i=0;i<colors.count;i+=2) {
+    a.equal(colors.getW(i+1),0);
+    a.ok(colors.getW(i)>=0);
+    a.ok(colors.getX(i)>=colors.getY(i));
+    a.ok(colors.getY(i)>=colors.getZ(i));
+  }
+  a.equal(cushion.geometry.attributes.position.count,512);
   visuals.update(.016,1,{x:0,y:180,z:1500},forward,.55,true);
   a.equal(cushion.visible,false);
   a.equal(tracers.geometry.drawRange.count,968);
