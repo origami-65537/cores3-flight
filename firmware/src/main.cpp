@@ -127,7 +127,7 @@ void drawRadar(uint32_t now) {
   radar.fillSprite(0x0828);
   radar.setTextSize(1);
   const bool live = received && now-lastRadar < 2000;
-  // During play the screen is the radar and the two touch buttons; status text appears only when something is wrong.
+  // During play the screen is the radar and the CENTER touch button; status text appears only when something is wrong.
   radar.setTextColor(0xFECA);
   radar.setCursor(12, 6);
   if (!initialized || now-lastImuSample > 500) radar.print("IMU: NO DATA");
@@ -154,9 +154,9 @@ void drawRadar(uint32_t now) {
     }
   }
   radar.fillTriangle(cx,cy-9,cx-6,cy+6,cx+6,cy+6,0xEFFF);
-  radar.fillRect(0, 200, 160, 40, 0x236D); radar.fillRect(160, 200, 160, 40, 0x334E);
+  radar.fillRect(160, 200, 160, 40, 0x334E);
   radar.setTextColor(0xEFFF); radar.setTextSize(2);
-  radar.setCursor(50, 212); radar.print("BOOST"); radar.setCursor(204, 212); radar.print("CENTER");
+  radar.setCursor(204, 212); radar.print("CENTER");
   radar.pushSprite(0,0);
 }
 
@@ -188,7 +188,7 @@ void loop() {
     int buttons = 0;
     for (int i=0; i<M5.Touch.getCount();i++) {
       auto touch = M5.Touch.getDetail(i);
-      if (touch.isPressed() && touch.y >= 200) buttons |= touch.x < 160 ? 1 : 2;
+      if (touch.isPressed() && touch.y >= 200 && touch.x >= 160) buttons |= 2;
     }
     char imu[160];
     snprintf(imu,sizeof imu,"{\"t\":\"imu\",\"r\":%.2f,\"p\":%.2f,\"y\":%.2f,\"b\":%d,\"gx\":%.1f,\"gy\":%.1f,\"gz\":%.1f}",roll,pitch,yaw,buttons,gyroX,gyroY,gyroZ);

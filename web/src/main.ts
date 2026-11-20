@@ -5,6 +5,7 @@ import { Island } from './island';
 import { buildAircraft } from './aircraft';
 import { RenderQuality } from './render-quality';
 import { FEEL, fovFromSpeed, nearMiss } from './feel';
+import { AIR, Momentum, coastEffect, rush, updraft, wind } from './air';
 import { FlightAudio } from './audio';
 import { Aerobatics, STUNT, TRICK_NAMES, steepness, trickPoints, turnFactor, type TrickKind } from './stunts';
 import './style.css';
@@ -14,8 +15,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <section class="instruments"><div><label>SCORE</label><strong id="score">0000</strong></div><div><label>SPEED</label><strong><span id="speed">0</span><em>m/s</em></strong></div><div><label>ALT</label><strong><span id="alt">0</span><em>m</em></strong></div></section>
 <pre id="stunt-debug" hidden></pre><div id="notice" role="status"></div>
 <div id="warning" role="status" hidden></div><div id="crash-flash"></div>
-<div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">島を自由に飛ぼう<small>The island is yours to fly</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>Shift / Space</kbd> ブースト · Boost</li><li><kbd>J / L</kbd> 押している間ロール · Hold to roll, full turn +100</li><li><kbd>I</kbd> 押している間ループ · Hold to loop +300（35 m/s 以上）</li><li><kbd>K</kbd> 押して反転 · Hold to split S +250</li><li><kbd>R</kbd> リスタート · Restart</li><li><kbd>CoreS3</kbd> 大きく傾けている間だけ回転 · Tilt far and hold to rotate</li></ul><p>島の名所には、くぐり抜けられる場所がある。<br>Each landmark has a way under or through. Hitting anything ends the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
-<footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>SHIFT / SPACE</kbd> Boost</span><span><kbd>J L · I · K</kbd> ロール / ループ / スプリットS</span></div><div class="actions"><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button><button id="fullscreen" type="button" aria-pressed="false" hidden>全画面</button></div></footer>`;
+<div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">島を自由に飛ぼう<small>The island is yours to fly</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>S → W</kbd> 急降下から引き起こすと加速 · Dive, then pull up for speed</li><li><kbd>J / L</kbd> 押している間ロール · Hold to roll, full turn +100</li><li><kbd>I</kbd> 押している間ループ · Hold to loop +300（35 m/s 以上）</li><li><kbd>K</kbd> 押して反転 · Hold to split S +250</li><li><kbd>R</kbd> リスタート · Restart</li><li><kbd>CoreS3</kbd> 大きく傾けている間だけ回転 · Tilt far and hold to rotate</li></ul><p>山の斜面と火口には上昇気流、風は機体を横に流し、海岸の低空は速く飛べる。<br>Air rises over slopes and the crater, the wind pushes you sideways, and low along the coast is fast.<br>島の名所には、くぐり抜けられる場所がある。<br>Each landmark has a way under or through. Hitting anything ends the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
+<footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>J L · I · K</kbd> ロール / ループ / スプリットS</span></div><div class="actions"><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button><button id="fullscreen" type="button" aria-pressed="false" hidden>全画面</button></div></footer>`;
 const scene = new THREE.Scene();
 document.querySelector('.flight-card ul')!.insertAdjacentHTML('beforeend','<li><kbd>M</kbd> Mute / Unmute</li>');
 document.querySelector('footer .controls')!.insertAdjacentHTML('beforeend','<span><kbd>M</kbd> Mute</span>');
@@ -56,8 +57,8 @@ const particlePositions=new Float32Array(FEEL.particleCount*3);
 const particleGeometry=new THREE.BufferGeometry(); particleGeometry.setAttribute('position',new THREE.BufferAttribute(particlePositions,3));
 const particleMaterial=new THREE.PointsMaterial({color:0xffe5a0,size:1.5,transparent:true,depthWrite:false,fog:false,blending:THREE.AdditiveBlending});
 const particles=new THREE.Points(particleGeometry,particleMaterial); particles.frustumCulled=false; particles.visible=false; scene.add(particles);
-let rewardAge=Infinity, hitstopUntil=0, boostMix=0, wasBoosting=false;
-let lastWhoosh=-Infinity, lastCue=-Infinity, lastBoostCue=-Infinity, wasLow=false, skimmedGround=false, skimmedStructure=false;
+let rewardAge=Infinity, hitstopUntil=0, rushMix=0;
+let lastWhoosh=-Infinity, lastCue=-Infinity, lastSurgeCue=-Infinity, wasLow=false, skimmedGround=false, skimmedStructure=false;
 // Flying through a landmark: light shards, a chime that climbs with each new landmark, and the time of day moves on.
 function reward() {
   rewardAge=0; particles.position.copy(position); particles.visible=true;
@@ -107,7 +108,7 @@ el('center').onclick=center;
 const minSpeed = 22, speedRange = 38, cruiseThrottle = .4, cruiseSpeed = minSpeed+speedRange*cruiseThrottle;
 let heading=0,pitch=0,bank=0,speed=cruiseSpeed,throttle=cruiseThrottle,score=0,elapsed=0,timeOfDay=0;
 let started=false,ended=false,noticeUntil=0,fanfare=false,showStunts=false,stalledCue=false;
-const aero=new Aerobatics(), heldAxis={roll:0,pitch:0}, trickCounts:Record<TrickKind,number>={barrelRoll:0,loop:0,splitS:0};
+const aero=new Aerobatics(), momentum=new Momentum(), heldAxis={roll:0,pitch:0}, trickCounts:Record<TrickKind,number>={barrelRoll:0,loop:0,splitS:0};
 const position = new THREE.Vector3(launch.x,launch.y,launch.z);
 const found=new Set<string>(), armed=landmarks.map(()=>true);
 const previous = new THREE.Vector3(), forward = new THREE.Vector3();
@@ -118,7 +119,7 @@ function resetFlight() {
   position.set(launch.x,launch.y,launch.z);
   heading=launch.heading; pitch=bank=score=elapsed=timeOfDay=0; found.clear(); armed.fill(true); fanfare=false; aero.reset(); stalledCue=false; trickCounts.barrelRoll=trickCounts.loop=trickCounts.splitS=0;
   speed=cruiseSpeed; throttle=cruiseThrottle; ended=false; noticeUntil=0;
-  hitstopUntil=0; wasBoosting=false; wasLow=false; skimmedGround=skimmedStructure=false; boostMix=0; lastWhoosh=lastCue=lastBoostCue=-Infinity;
+  hitstopUntil=0; momentum.reset(); wasLow=false; skimmedGround=skimmedStructure=false; rushMix=0; lastWhoosh=lastCue=lastSurgeCue=-Infinity;
   rewardAge=Infinity; particles.visible=false;
   camera.position.set(launch.x,launch.y+8,launch.z+27);
   el('crash-flash').classList.remove('active');
@@ -186,12 +187,8 @@ function animate() {
   const dt=now<hitstopUntil?0:visualDt;
   const key=keyboard.sample(), imu=device.sample(dt);
   const roll=THREE.MathUtils.clamp(key.roll+imu.roll,-1,1), climb=THREE.MathUtils.clamp(key.pitch+imu.pitch,-1,1);
-  const boosting=started && !ended && (key.boost||imu.boost);
-  if(boosting && !wasBoosting) {audio.boost(); if(now-lastBoostCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'boost'});lastBoostCue=now;}}
-  wasBoosting=boosting;
   if(started && !ended) {
     elapsed+=dt; throttle=THREE.MathUtils.clamp(throttle+key.throttle*dt*.3,0,1);
-    speed=THREE.MathUtils.damp(speed,minSpeed+throttle*speedRange+((key.boost||imu.boost)?28:0),2,dt);
     previous.copy(position);
     // Past the normal tilt range the plane keeps rotating while the input is held; the usual limits return when it is let go.
     const keyHold=key.hold!, deviceHold=imu.hold;
@@ -200,10 +197,16 @@ function animate() {
     ({heading,pitch,bank}=flown);
     if(aero.stalled && !stalledCue)flash(`失速！ ${STUNT.loop.minSpeed} m/s 必要`);
     stalledCue=aero.stalled;
-    speed=Math.max(minSpeed*.6,speed-STUNT.gravity*steepness(pitch)*dt);
+    // Speed comes from height: a dive builds it, levelling out of a long one adds a surge, and a climb spends it.
+    const energy=momentum.step(speed,pitch,minSpeed+throttle*speedRange,coastEffect(position),dt);
+    speed=THREE.MathUtils.clamp(energy.speed-STUNT.gravity*steepness(pitch)*dt,minSpeed*.6,AIR.maxSpeed);
+    if(energy.pulledOut) {audio.boost(); if(now-lastSurgeCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'boost'});lastSurgeCue=now;}}
     heading+=Math.sin(bank)*turnFactor(pitch)*dt*FEEL.response.turn;
     forward.set(-Math.sin(heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(heading)*Math.cos(pitch));
     position.addScaledVector(forward,speed*dt);
+    // The air itself moves: wind carries the plane sideways and rising air over slopes lifts it.
+    const breeze=wind(position,elapsed);
+    position.x+=breeze.x*dt; position.z+=breeze.z*dt; position.y+=updraft(position)*dt;
     position.y=Math.min(position.y,CEILING);
     // Far out over the sea the mist closes in and the flight carries on from the other side of the island.
     const back=wrap(position.x,position.z);
@@ -226,8 +229,8 @@ function animate() {
   plane.position.copy(position); plane.rotation.set(pitch,heading,bank,'YXZ');
   updatePropeller(dt, started && !ended && !reducedMotion.matches ? airspeed : 0);
   audio.update(airspeed,started && !ended);
-  boostMix=THREE.MathUtils.damp(boostMix,boosting?1:0,FEEL.camera.boostSmoothing,visualDt);
-  lineMaterial.opacity=boostMix*FEEL.speedLines.opacity;
+  rushMix=THREE.MathUtils.damp(rushMix,started && !ended?rush(airspeed):0,FEEL.camera.rushSmoothing,visualDt);
+  lineMaterial.opacity=rushMix*FEEL.speedLines.opacity;
   speedLines.position.z=(now%200)/200*FEEL.speedLines.length;
   camera.fov=THREE.MathUtils.damp(camera.fov,fovFromSpeed(airspeed),FEEL.fov.smoothing,visualDt); camera.updateProjectionMatrix();
   if(particles.visible) {
@@ -239,10 +242,10 @@ function animate() {
     particleGeometry.attributes.position.needsUpdate=true; particleMaterial.opacity=Math.max(0,1-rewardAge/FEEL.particleSeconds);
     if(rewardAge>FEEL.particleSeconds)particles.visible=false;
   }
-  behind.set(0,8,27+boostMix*FEEL.camera.pullback).applyAxisAngle(up,view).add(position);
+  behind.set(0,8,27+rushMix*FEEL.camera.pullback).applyAxisAngle(up,view).add(position);
   lookTarget.set(-Math.sin(view)*35,2,-Math.cos(view)*35).add(position);
   camera.position.lerp(behind,1-Math.exp(-visualDt*(stunting?STUNT.cameraSmoothing:FEEL.camera.smoothing)));
-  if(!reducedMotion.matches) {camera.position.x+=Math.sin(now*.047)*boostMix*FEEL.camera.shake; camera.position.y+=Math.cos(now*.063)*boostMix*FEEL.camera.shake;}
+  if(!reducedMotion.matches) {camera.position.x+=Math.sin(now*.047)*rushMix*FEEL.camera.shake; camera.position.y+=Math.cos(now*.063)*rushMix*FEEL.camera.shake;}
   camera.position.y=Math.max(camera.position.y,groundHeight(camera.position.x,camera.position.z)+2);
   camera.lookAt(lookTarget);
   island.update(visualDt,timeOfDay,mist(position.x,position.z),camera.position);

@@ -2,9 +2,9 @@ import { FEEL } from './feel';
 import { HoldDetector, type Hold } from './stunts';
 
 /** hold names an axis kept past the normal tilt range: it rotates the plane for as long as it stays there. */
-export interface Controls { pitch: number; roll: number; yaw?: number; throttle: number; boost: boolean; hold?: Hold }
+export interface Controls { pitch: number; roll: number; yaw?: number; throttle: number; hold?: Hold }
 export interface InputSource { sample(dt: number): Controls }
-export const neutral = (): Controls => ({pitch:0, roll:0, throttle:0, boost:false});
+export const neutral = (): Controls => ({pitch:0, roll:0, throttle:0});
 /** gx, gy and gz are angular velocity in degrees per second; older firmware omits them and the game does not use them. */
 export interface Imu { t: 'imu'; r: number; p: number; y: number; b: number; gx?: number; gy?: number; gz?: number }
 export function parseImu(line: string): Imu | null {
@@ -35,7 +35,7 @@ export class Keyboard implements InputSource {
   }
   sample(): Controls {
     const k = (...codes: string[]) => Number(codes.some(c => this.keys.has(c)));
-    return {pitch:k('KeyW','ArrowUp')-k('KeyS','ArrowDown'), roll:k('KeyD','ArrowRight')-k('KeyA','ArrowLeft'), throttle:k('KeyE')-k('KeyQ'), boost:!!k('ShiftLeft','ShiftRight','Space'), hold:{roll:k('KeyL')-k('KeyJ'), pitch:k('KeyI')-k('KeyK')}};
+    return {pitch:k('KeyW','ArrowUp')-k('KeyS','ArrowDown'), roll:k('KeyD','ArrowRight')-k('KeyA','ArrowLeft'), throttle:k('KeyE')-k('KeyQ'), hold:{roll:k('KeyL')-k('KeyJ'), pitch:k('KeyI')-k('KeyK')}};
   }
 }
 interface Port { readable: ReadableStream<Uint8Array> | null; writable: WritableStream<Uint8Array> | null; open(o:{baudRate:number}):Promise<void>; close():Promise<void> }
@@ -152,14 +152,13 @@ export class CoreS3 implements InputSource {
   }
   sample(dt:number): Controls {
     if (!this.connected || this.last === undefined || performance.now()-this.last > IMU_TIMEOUT_MS) return neutral();
-    const boost = !!(this.imu.b&1);
-    if (this.centering) return {...neutral(),boost};
+    if (this.centering) return neutral();
     const blend = 1-Math.exp(-dt*FEEL.response.device);
     const {roll,pitch} = this.flightTilt();
     this.filtered.pitch += (axis(pitch)-this.filtered.pitch)*blend;
     this.filtered.roll += (axis(roll)-this.filtered.roll)*blend;
     const hold = this.holds.update(roll,pitch);
-    return hold.roll || hold.pitch ? {...this.filtered,boost,hold} : {...this.filtered,boost};
+    return hold.roll || hold.pitch ? {...this.filtered,hold} : {...this.filtered};
   }
   send(data:unknown) {
     if (this.socket) { if (this.socket.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 4096) this.socket.send(JSON.stringify(data)); return; }

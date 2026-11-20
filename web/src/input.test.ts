@@ -104,7 +104,6 @@ test('USB auto-centers on fresh, noisy IMU data and preserves keyboard-ready neu
     const input = device.sample(.05);
     a.ok(input.roll > .6 && input.roll < .65);
     a.ok(input.pitch > .6 && input.pitch < .65);
-    a.equal(input.boost, true);
   });
 });
 
@@ -120,7 +119,7 @@ test('manual center clears built-up steering and hardware center averages wrappe
     a.deepEqual(device.sample(.05), neutral());
     for (let i = 0; i < 10; i++) await frame(i % 2 ? 179 : -179, 35, 3);
     a.deepEqual(calibrations, [false, true, false, true, false, true]);
-    a.deepEqual(device.sample(.05), {...neutral(), boost:true});
+    a.deepEqual(device.sample(.05), neutral());
     await frame(-177, 35);
     const input = device.sample(.05);
     a.ok(input.pitch > 0 && input.pitch < .02);
