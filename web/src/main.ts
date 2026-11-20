@@ -5,15 +5,15 @@ import { RenderQuality } from './render-quality';
 import { ringGuidePlacement } from './guide-layout';
 import { FEEL, fovFromSpeed, nearMiss } from './feel';
 import { FlightAudio } from './audio';
-import { STUNT, TRICK_NAMES, stepTrick, trickFor, trickFrame, trickPoints, trickSeconds, type Gesture, type Trick, type TrickKind } from './stunts';
+import { Aerobatics, STUNT, TRICK_NAMES, steepness, trickPoints, turnFactor, type TrickKind } from './stunts';
 import './style.css';
 
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 <header><div class="brand"><span class="mark">↗</span><div>空路 <span class="latin">SKYLINE</span><small>CORES3 FLIGHT LAB / 01</small></div></div><div class="connection"><i></i><span id="status">キーボード / Keyboard ready</span><span id="imu"></span><button id="connect">USBで接続 ↗</button><button id="wifi">Wi-Fiで接続 ↗</button></div></header>
 <section class="instruments"><div><label>SCORE</label><strong id="score">0000</strong></div><div><label>SPEED</label><strong><span id="speed">0</span><em>m/s</em></strong></div><div><label>ALT</label><strong><span id="alt">0</span><em>m</em></strong></div></section>
-<pre id="flick-debug" hidden></pre><div class="reticle" aria-hidden="true">⊕</div><div id="notice" role="status"></div>
+<pre id="stunt-debug" hidden></pre><div class="reticle" aria-hidden="true">⊕</div><div id="notice" role="status"></div>
 <div id="warning" role="status" hidden></div><div id="ring-guide" hidden><span class="guide-symbol" aria-hidden="true">➤</span><span class="guide-distance"></span></div><div id="crash-flash"></div>
-<div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">光のリングをくぐろう<small>Fly through the glowing rings</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>Shift / Space</kbd> ブースト · Boost</li><li><kbd>J / L</kbd> バレルロール 左 / 右 · Barrel roll +100</li><li><kbd>I</kbd> ループ · Loop +300（35 m/s 以上）</li><li><kbd>K</kbd> スプリットS · Split S +250（高度 −40 m）</li><li><kbd>R</kbd> リスタート · Restart</li><li><kbd>CoreS3</kbd> ひねる → ロール · 手前に引く → ループ · 奥へ押す → スプリットS</li></ul><p>地面・岩柱に衝突するとフライト終了。<br>Ground & rock pillars end the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
+<div id="flight-overlay"><section class="flight-card" aria-labelledby="briefing-title"><div class="eyebrow">FLIGHT BRIEFING · はじめに</div><h2 id="briefing-title">光のリングをくぐろう<small>Fly through the glowing rings</small></h2><ul><li><kbd>W / S · ↑ / ↓</kbd> 上昇 / 下降 · Climb / Descend</li><li><kbd>A / D · ← / →</kbd> バンクで旋回 · Bank to turn</li><li><kbd>Q / E</kbd> 減速 / 加速 · Slower / Faster</li><li><kbd>Shift / Space</kbd> ブースト · Boost</li><li><kbd>J / L</kbd> 押している間ロール · Hold to roll, full turn +100</li><li><kbd>I</kbd> 押している間ループ · Hold to loop +300（35 m/s 以上）</li><li><kbd>K</kbd> 押して反転 · Hold to split S +250</li><li><kbd>R</kbd> リスタート · Restart</li><li><kbd>CoreS3</kbd> 大きく傾けている間だけ回転 · Tilt far and hold to rotate</li></ul><p>地面・岩柱に衝突するとフライト終了。<br>Ground & rock pillars end the flight.</p><button>Enter / Space で離陸 · Press Enter or Space to take off</button></section></div>
 <footer><div class="controls"><span><kbd>W S</kbd> 上昇 / 下降</span><span><kbd>A D</kbd> バンク / Turn</span><span><kbd>Q E</kbd> 減速 / 加速</span><span><kbd>SHIFT / SPACE</kbd> Boost</span><span><kbd>J L · I · K</kbd> ロール / ループ / スプリットS</span></div><div class="actions"><button id="center">センター合わせ</button><button id="reset">↻ リセット <kbd>R</kbd></button><button id="fullscreen" type="button" aria-pressed="false" hidden>全画面</button></div></footer>`;
 const scene = new THREE.Scene();
 document.querySelector('.flight-card ul')!.insertAdjacentHTML('beforeend','<li><kbd>M</kbd> Mute / Unmute</li>');
@@ -161,18 +161,13 @@ el('wifi').onclick=()=>{
 const servedByDevice=wifiTarget(location);
 if (location.protocol==='http:' && 'url' in servedByDevice) {wifiUrl=servedByDevice.url; void connectWifi(wifiUrl,true);}
 setInterval(()=>{if(wifiUrl && !device.connected) void connectWifi(wifiUrl,true);},3000);
-const flickNames:Record<Gesture,string>={twistLeft:'← TWIST',twistRight:'TWIST →',pull:'PULL',push:'PUSH'};
-let peakRoll=0, peakPitch=0;
 setInterval(()=>{
-  const panel=el('flick-debug'), d=device.flickDebug();
-  panel.hidden=!showFlicks;
-  if(!showFlicks)return;
-  // Peak hold makes a 100 ms flick readable on a panel that refreshes ten times a second.
-  peakRoll=Math.max(Math.abs(d.rollRate),peakRoll*.9); peakPitch=Math.max(Math.abs(d.pitchRate),peakPitch*.9);
-  const t=device.telemetry(), f=STUNT.flick, sign=(n:number)=>`${n<0?'-':'+'}${Math.abs(n).toFixed(0).padStart(3)}`;
-  const state=!device.connected?'CoreS3 未接続 · keys J L I K':!t.hz?'NO IMU DATA':!d.supported?'ファームウェア更新が必要 / REFLASH FOR FLICKS':d.centering?'CENTERING':d.progress?`TRACKING ${d.progress.axis} ${sign(d.progress.swing)}° ${d.progress.rate.toFixed(0)}°/s`:d.armed?'READY':'WAIT · ニュートラルに戻す / return to neutral';
-  const last=d.last?`${flickNames[d.last.gesture]} ${d.last.rate.toFixed(0)}°/s ${d.last.swing.toFixed(0)}° · ${((performance.now()-d.last.t)/1000).toFixed(1)}s ago`:'—';
-  showText(panel,[`FLICK DEBUG · G で表示切替`,state,`roll  ${sign(t.roll)}°  ${sign(d.rollRate)}°/s  peak ${peakRoll.toFixed(0).padStart(3)}`,`pitch ${sign(t.pitch)}°  ${sign(d.pitchRate)}°/s  peak ${peakPitch.toFixed(0).padStart(3)}`,`need ≥${f.rate}°/s · twist ${f.rollSwing}° · pull/push ${f.pitchSwing}°`,`last  ${last}`,`count ←${d.counts.twistLeft} →${d.counts.twistRight} pull ${d.counts.pull} push ${d.counts.push}`,`reject ${d.rejected||'—'}`,`trick ${trick?`${TRICK_NAMES[trick.kind]} ${(trick.t/trickSeconds(trick.kind)*100).toFixed(0)}%`:'—'}`].join('\n'));
+  const panel=el('stunt-debug');
+  panel.hidden=!showStunts;
+  if(!showStunts)return;
+  const t=device.telemetry(), h=STUNT.hold, sign=(n:number)=>`${n<0?'-':'+'}${Math.abs(n).toFixed(0).padStart(3)}`, degrees=(n:number)=>sign(n*180/Math.PI);
+  const held=heldAxis.roll?`HOLD ROLL ${heldAxis.roll<0?'←':'→'}`:heldAxis.pitch?`HOLD ${heldAxis.pitch>0?'PULL':'PUSH'}`:aero.stalled?`STALL · ${STUNT.loop.minSpeed} m/s 必要`:'—';
+  showText(panel,[`STUNT DEBUG · G`,!device.connected?'CoreS3 未接続 · keys J L I K':!t.hz?'NO IMU DATA':`tilt roll ${sign(t.roll)}°  pitch ${sign(t.pitch)}°`,`hold ≥${h.start}° · release <${h.release}°`,`input ${held}`,`plane bank ${degrees(bank)}°  pitch ${degrees(pitch)}°`,`count roll ${trickCounts.barrelRoll} loop ${trickCounts.loop} split S ${trickCounts.splitS}`].join('\n'));
 },100);
 setInterval(()=>{const t=device.telemetry(); el('imu').textContent=device.connected?(t.hz?`傾き R${t.roll.toFixed(0)}° P${t.pitch.toFixed(0)}° · ${t.hz}Hz`:'姿勢データなし / No IMU data'):'';},250);
 device.onCalibration=ready=>flash(ready?'センター設定':'姿勢をキープ');
@@ -182,7 +177,8 @@ function center() {
 el('center').onclick=center;
 const minSpeed = 22, speedRange = 38, cruiseThrottle = .4, cruiseSpeed = minSpeed+speedRange*cruiseThrottle;
 let heading=0,pitch=0,bank=0,speed=cruiseSpeed,throttle=cruiseThrottle,score=0,elapsed=0,nextGate=0;
-let started=false,ended=false,noticeUntil=0,ringsHit=0,trick:Trick|null=null,showFlicks=false;
+let started=false,ended=false,noticeUntil=0,ringsHit=0,showStunts=false,stalledCue=false;
+const aero=new Aerobatics(), heldAxis={roll:0,pitch:0}, trickCounts:Record<TrickKind,number>={barrelRoll:0,loop:0,splitS:0};
 const position = new THREE.Vector3(launch.x,launch.y,launch.z);
 const previous = new THREE.Vector3(), forward = new THREE.Vector3(), aim = new THREE.Vector3();
 const reticle = document.querySelector<HTMLElement>('.reticle')!;
@@ -196,7 +192,7 @@ function flash(s:string) {if (!ended) {notice.textContent=s; noticeUntil=perform
 function takeoff() {audio.start(); started=true; el('flight-overlay').hidden=true;}
 function resetFlight() {
   position.set(launch.x,launch.y,launch.z);
-  heading=pitch=bank=score=elapsed=nextGate=ringsHit=0; trick=null;
+  heading=pitch=bank=score=elapsed=nextGate=ringsHit=0; aero.reset(); stalledCue=false; trickCounts.barrelRoll=trickCounts.loop=trickCounts.splitS=0;
   speed=cruiseSpeed; throttle=cruiseThrottle; ended=false; noticeUntil=0;
   streak=0; hitstopUntil=0; wasBoosting=false; wasLow=false; skimmedGround=false; boostMix=0; lastWhoosh=lastCue=lastBoostCue=-Infinity;
   if(rewardRing)rewardRing.material.dispose();
@@ -207,11 +203,6 @@ function resetFlight() {
   el('crash-flash').classList.remove('active');
 }
 function reset() {resetFlight(); takeoff();}
-function startTrick(gesture:Gesture) {
-  if(!started || ended || trick)return;
-  trick=trickFor(gesture,speed);
-  if(trick.kind==='stall')flash(`失速！ ${STUNT.loop.minSpeed} m/s 必要`);
-}
 function formatTime() {return `${Math.floor(elapsed/60).toString().padStart(2,'0')}:${Math.floor(elapsed%60).toString().padStart(2,'0')}`;}
 function finish(cause:'ground'|'pillar'|'complete') {
   ended=true;
@@ -229,9 +220,7 @@ el('reset').onclick=reset; window.addEventListener('keydown',e=>{
   if(e.code==='KeyR')reset();
   if((e.code==='Enter' && (!started || ended)) || (e.code==='Space' && !started)) {e.preventDefault(); if(!started)takeoff(); else reset();}
   if(e.code==='KeyC')center();
-  const stunt=({KeyJ:'twistLeft',KeyL:'twistRight',KeyI:'pull',KeyK:'push'} as Record<string,Gesture>)[e.code];
-  if(stunt)startTrick(stunt);
-  if(e.code==='KeyG')showFlicks=!showFlicks;
+  if(e.code==='KeyG')showStunts=!showStunts;
   if(e.code==='KeyM') {audio.toggle(); flash(audio.muted?'Audio muted':'Audio on');}
 });
 const clock=new THREE.Clock(); let radarTimer=0;
@@ -274,7 +263,6 @@ function animate() {
   const visualDt=Math.min(frameTime,.05), now=performance.now();
   const dt=now<hitstopUntil?0:visualDt;
   const key=keyboard.sample(), imu=device.sample(dt);
-  device.gestures().forEach(startTrick);
   const roll=THREE.MathUtils.clamp(key.roll+imu.roll,-1,1), climb=THREE.MathUtils.clamp(key.pitch+imu.pitch,-1,1);
   const boosting=started && !ended && (key.boost||imu.boost);
   if(boosting && !wasBoosting) {audio.boost(); if(now-lastBoostCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'boost'});lastBoostCue=now;}}
@@ -283,31 +271,24 @@ function animate() {
     elapsed+=dt; throttle=THREE.MathUtils.clamp(throttle+key.throttle*dt*.3,0,1);
     speed=THREE.MathUtils.damp(speed,minSpeed+throttle*speedRange+((key.boost||imu.boost)?28:0),2,dt);
     previous.copy(position);
-    let landed:TrickKind|null=null;
-    if(trick) {
-      // The trick flies the plane; the flight model underneath levels out and takes over again when it ends.
-      pitch=THREE.MathUtils.damp(pitch,0,FEEL.response.pitch,dt); bank=THREE.MathUtils.damp(bank,0,FEEL.response.bank,dt);
-      const step=stepTrick(trick,dt,heading,pitch,speed), angle=pitch+step.frame.pitch;
-      position.x+=step.dx; position.y+=step.dy; position.z+=step.dz;
-      forward.set(-Math.sin(heading)*Math.cos(angle),Math.sin(angle),-Math.cos(heading)*Math.cos(angle));
-      if(step.done) {
-        if(trick.kind==='splitS')heading+=Math.PI;
-        speed*=step.frame.speed; landed=trick.kind;
-        trick=null;
-      }
-    } else {
-      pitch=THREE.MathUtils.damp(pitch,climb*.49,key.pitch?FEEL.response.keyboardPitch:FEEL.response.pitch,dt); bank=THREE.MathUtils.damp(bank,-roll*.78,key.roll?FEEL.response.keyboardBank:FEEL.response.bank,dt);
-      heading+=Math.sin(bank)*dt*FEEL.response.turn;
-      forward.set(-Math.sin(heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(heading)*Math.cos(pitch));
-      position.addScaledVector(forward,speed*dt);
-    }
+    // Past the normal tilt range the plane keeps rotating while the input is held; the usual limits return when it is let go.
+    const keyHold=key.hold!, deviceHold=imu.hold;
+    heldAxis.roll=keyHold.roll||deviceHold?.roll||0; heldAxis.pitch=keyHold.pitch||deviceHold?.pitch||0;
+    const flown=aero.step({heading,pitch,bank},{roll,climb,hold:heldAxis,speed,bankResponse:key.roll?FEEL.response.keyboardBank:FEEL.response.bank,pitchResponse:key.pitch?FEEL.response.keyboardPitch:FEEL.response.pitch},dt);
+    ({heading,pitch,bank}=flown);
+    if(aero.stalled && !stalledCue)flash(`失速！ ${STUNT.loop.minSpeed} m/s 必要`);
+    stalledCue=aero.stalled;
+    speed=Math.max(minSpeed*.6,speed-STUNT.gravity*steepness(pitch)*dt);
+    heading+=Math.sin(bank)*turnFactor(pitch)*dt*FEEL.response.turn;
+    forward.set(-Math.sin(heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(heading)*Math.cos(pitch));
+    position.addScaledVector(forward,speed*dt);
     position.y=Math.min(position.y,650);
     if (position.y<2) finish('ground');
     else if (pillars.some(p=>position.y<p.h+2 && Math.hypot(position.x-p.x,position.z-p.z)<p.r+2)) {
       finish('pillar');
     } else {
       // A trick scores only once its last frame has cleared the ground and the pillars.
-      if(landed && trickPoints(landed)) {score+=trickPoints(landed); flash(`${TRICK_NAMES[landed]} +${trickPoints(landed)}`);}
+      for(const kind of flown.tricks) {score+=trickPoints(kind); trickCounts[kind]++; flash(`${TRICK_NAMES[kind]} +${trickPoints(kind)}`);}
       const result = crossGate(course[nextGate],previous,position);
       if (result) {
         const index=nextGate++; rings[index].visible=false;
@@ -318,10 +299,8 @@ function animate() {
       }
     }
   }
-  const pose=trick?trickFrame(trick.kind,trick.dir,trick.t/trickSeconds(trick.kind)):null;
-  const airspeed=speed*(pose?.speed??1), view=heading+(pose?.yaw??0);
-  plane.position.copy(position); plane.rotation.set(pitch+(pose?.pitch??0),heading,bank+(pose?.roll??0),'YXZ');
-  if(pose) {plane.position.x+=Math.cos(heading)*pose.side; plane.position.y+=pose.lift; plane.position.z-=Math.sin(heading)*pose.side;}
+  const airspeed=speed, view=heading+aero.view, stunting=aero.active({heading,pitch,bank});
+  plane.position.copy(position); plane.rotation.set(pitch,heading,bank,'YXZ');
   audio.update(airspeed,started && !ended);
   boostMix=THREE.MathUtils.damp(boostMix,boosting?1:0,FEEL.camera.boostSmoothing,visualDt);
   lineMaterial.opacity=boostMix*FEEL.speedLines.opacity;
@@ -340,7 +319,7 @@ function animate() {
   }
   behind.set(0,8,27+boostMix*FEEL.camera.pullback).applyAxisAngle(up,view).add(position);
   lookTarget.set(-Math.sin(view)*35,2,-Math.cos(view)*35).add(position);
-  camera.position.lerp(behind,1-Math.exp(-visualDt*(pose?STUNT.cameraSmoothing:FEEL.camera.smoothing)));
+  camera.position.lerp(behind,1-Math.exp(-visualDt*(stunting?STUNT.cameraSmoothing:FEEL.camera.smoothing)));
   if(!reducedMotion.matches) {camera.position.x+=Math.sin(now*.047)*boostMix*FEEL.camera.shake; camera.position.y+=Math.cos(now*.063)*boostMix*FEEL.camera.shake;}
   camera.lookAt(lookTarget);
   ringGuide.hidden = reticle.hidden = !started || ended;
