@@ -1,6 +1,6 @@
 export const FEEL = {
   fov: { cruise:60, max:75, cruiseSpeed:37.2, maxSpeed:88, smoothing:4 },
-  camera: { smoothing:5, pullback:4, shake:.12, boostSmoothing:6 },
+  camera: { smoothing:5, pullback:4, shake:.12, rushSmoothing:6 },
   response: { device:20, bank:12, keyboardBank:5, pitch:9, keyboardPitch:4, turn:.9 },
   audio: { wind:.055, chime:.12, whoosh:.09, boost:.09, smoothing:.12, basePitch:660, streakStep:2, maxStreak:12 },
   hitstopMs:50, particleCount:60, particleSeconds:1, particleSpeed:34,
