@@ -29,7 +29,7 @@ M5Canvas radar(&M5.Display);
 float roll = 0, pitch = 0, yaw = 0, heading = 0;
 float gyroX = 0, gyroY = 0, gyroZ = 0;
 float targets[16][2];
-int targetCount = 0, score = 0, speed = 0, altitude = 0;
+int targetCount = 0;
 uint32_t lastImu = 0, lastDraw = 0, lastRadar = 0;
 uint32_t lastImuSample = 0;
 bool received = false, initialized = false, overflow = false;
@@ -58,7 +58,6 @@ void handleRadar(const String &message) {
         if (std::isfinite(x) && std::isfinite(z)) { targets[targetCount][0] = x; targets[targetCount++][1] = z; }
       }
     }
-    score = doc["score"] | 0; speed = doc["speed"] | 0; altitude = doc["alt"] | 0;
     received = std::isfinite(heading); lastRadar = millis();
   }
 }
@@ -123,19 +122,22 @@ void startNetwork() {
 
 void drawRadar(uint32_t now) {
   radar.fillSprite(0x0828);
-  radar.setTextColor(0xDFB6); radar.setTextSize(1);
-  radar.setCursor(12, 9); radar.print("SKYLINE / CORES3 RADAR");
-  radar.setCursor(170, 9);
-  if (accessPoint) radar.print("AP");
-  else if (WiFi.status() == WL_CONNECTED) radar.printf("WiFi %s", WiFi.localIP().toString().c_str());
-  else radar.print("WiFi connecting...");
-  if (socket.count()) radar.print(" *");
+  radar.setTextSize(1);
   const bool live = received && now-lastRadar < 2000;
-  radar.setTextColor(live ? 0x6F9A : 0xFECA);
-  radar.setCursor(12, 24);
-  radar.print(live ? "GAME LIVE" : received ? "GAME DATA LOST" : "NO GAME DATA");
-  radar.setTextColor(0xDFB6);
-  const int cx = 84, cy = 111, radius = 69;
+  // During play the screen is the radar and the two touch buttons; status text appears only when something is wrong.
+  radar.setTextColor(0xFECA);
+  radar.setCursor(12, 6);
+  if (!initialized || now-lastImuSample > 500) radar.print("IMU: NO DATA");
+  else if (!live) radar.print(received ? "GAME DATA LOST" : "NO GAME DATA");
+  if (!live) {
+    radar.setTextColor(0xDFB6);
+    radar.setCursor(170, 6);
+    if (accessPoint) radar.print("AP");
+    else if (WiFi.status() == WL_CONNECTED) radar.printf("WiFi %s", WiFi.localIP().toString().c_str());
+    else radar.print("WiFi connecting...");
+    if (socket.count()) radar.print(" *");
+  }
+  const int cx = 160, cy = 107, radius = 86;
   radar.drawCircle(cx, cy, radius, 0x4BEE); radar.drawCircle(cx, cy, radius/2, 0x224B);
   radar.drawLine(cx-radius, cy, cx+radius, cy, 0x224B); radar.drawLine(cx,cy-radius,cx,cy+radius,0x224B);
   if (live) {
@@ -147,22 +149,8 @@ void drawRadar(uint32_t now) {
       float x = right/600*radius, y = -forward/600*radius;
       if (x*x+y*y < (radius-4)*(radius-4)) radar.fillCircle(cx+int(x),cy+int(y),3,0xFECA);
     }
-    radar.setCursor(170, 47); radar.print("SCORE");
-    radar.setCursor(170, 82); radar.print("SPEED");
-    radar.setCursor(170, 117); radar.print("ALTITUDE");
-    radar.setTextSize(2);
-    radar.setCursor(170, 58); radar.printf("%d", score);
-    radar.setCursor(170, 93); radar.printf("%d m/s", speed);
-    radar.setCursor(170, 128); radar.printf("%d m", altitude);
-    radar.setTextSize(1);
   }
   radar.fillTriangle(cx,cy-9,cx-6,cy+6,cx+6,cy+6,0xEFFF);
-  radar.setCursor(54, 188); radar.print("RANGE 600m");
-  radar.setCursor(170, 163);
-  if (!initialized) radar.print("IMU: no samples");
-  else if (now-lastImuSample > 500) radar.print("IMU: no recent data");
-  else radar.printf("Raw R:%+4.0f P:%+4.0f deg", roll, pitch);
-  radar.setCursor(170, 183); radar.print("Hold neutral; tap CENTER");
   radar.fillRect(0, 200, 160, 40, 0x236D); radar.fillRect(160, 200, 160, 40, 0x334E);
   radar.setTextColor(0xEFFF); radar.setTextSize(2);
   radar.setCursor(50, 212); radar.print("BOOST"); radar.setCursor(204, 212); radar.print("CENTER");
