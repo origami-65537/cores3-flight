@@ -259,7 +259,7 @@ function animate() {
   camera.position.y=Math.max(camera.position.y,groundHeight(camera.position.x,camera.position.z)+2);
   camera.lookAt(lookTarget);
   island.update(visualDt,timeOfDay,mist(position.x,position.z),camera.position);
-  airVisuals.update(visualDt,now/1000,position,forward,quality.pixelRatio(1920,1080,1),started && !ended && !reducedMotion.matches);
+  airVisuals.update(visualDt,elapsed,position,forward,quality.pixelRatio(1920,1080,1),started && !ended && !reducedMotion.matches);
   if(playing!==(started && !ended))document.body.classList.toggle('play',playing=started && !ended);
   showText(scoreDisplay,String(score).padStart(4,'0'));
   showText(speedDisplay,airspeed.toFixed(0));
