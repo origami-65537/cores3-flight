@@ -104,6 +104,7 @@ test('a turn that starts from a banked or climbing attitude is measured from tha
   a.deepEqual(fly([[1,{},right],[roll*.74,{roll:1},right],[1,{},right]]).tricks, ['barrelRoll'], 'from a right bank all the way round to the same right bank');
   a.deepEqual(fly([[1,{},right],[roll*.74,{roll:1},right],[1,{},left]]).tricks, [], 'from a right bank to a left bank is three quarters of a turn');
   a.deepEqual(fly([[1,{},up],[loop*.8,{pitch:1},up],[1,{},up]]).tricks, ['loop']);
+  a.deepEqual(fly([[1,{},right],[roll*.7,{roll:1},right],[.1,{},right],[1,{}]]).tricks, ['barrelRoll'], 'from a full right bank round to level is the shortest roll that counts');
   const shallow = fly([[1,{},up],[deg(140)/STUNT.loop.rate,{pitch:-1},up],[1.5,{}]]);
   a.deepEqual(shallow.tricks, [], 'pushed 140 degrees from a climb: the nose is only 112 degrees below level');
   near(shallow.heading,Math.PI,1e-9,'it still reverses');

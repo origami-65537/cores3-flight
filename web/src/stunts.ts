@@ -16,10 +16,8 @@ export const STUNT = {
 } as const;
 
 const TAU = Math.PI*2, HALF = Math.PI/2;
-// How close to the normal limit counts as back inside it; damping never quite reaches a target on the limit.
-const SETTLED = .05;
-// A turn that is let go may end this far short of the attitude it started from and still count.
-const FULL_TURN_SLACK = .26;
+// How close to its target an angle has to be to count as settled; damping never quite reaches it.
+const SETTLED = .05, SLACK = .1;
 const damp = (from:number, to:number, rate:number, dt:number) => from+(to-from)*(1-Math.exp(-rate*dt));
 const clamp = (n:number, limit:number) => Math.max(-limit,Math.min(limit,n));
 
@@ -63,7 +61,7 @@ export class Aerobatics {
   stalled = false;
   private rollHold = 0;
   private pitchHold = 0;
-  // Rotation actually flown since the plane was last inside its normal limits. Re-labelling the attitude never adds to it.
+  // Rotation actually flown since the plane last settled. Re-labelling the attitude never adds to it.
   private rolled = 0;
   private looped = 0;
   private reversal = false;
@@ -86,10 +84,10 @@ export class Aerobatics {
     else bank = damp(bank,bankTarget,input.bankResponse,dt);
     this.rolled += bank-bankBefore; bank = wrap(bank);
     this.rollHold = rollHold;
-    // A held roll counts at the full turn. One that is let go counts as it comes back inside the normal bank limit,
-    // if the bank it is settling to completes the turn.
-    const settledBank = !rollHold && Math.abs(bank) <= L.bank+SETTLED;
-    if (Math.abs(settledBank ? this.rolled+bankTarget-bank : this.rolled) >= (rollHold ? TAU : TAU-FULL_TURN_SLACK)) { tricks.push('barrelRoll'); this.rolled -= Math.sign(this.rolled)*TAU; }
+    // A held roll counts at the full turn. One that is let go is judged once the plane has settled, on the rotation it really flew:
+    // it may end anywhere inside the normal bank limit, so up to that much short of a full turn still counts.
+    const settledBank = !rollHold && Math.abs(bank-bankTarget) <= SETTLED;
+    if (rollHold ? Math.abs(this.rolled) >= TAU : settledBank && Math.abs(this.rolled) >= TAU-L.bank-SLACK) { tricks.push('barrelRoll'); this.rolled -= Math.sign(this.rolled)*TAU; }
     if (settledBank) this.rolled = 0;
 
     let pitchHold = Math.sign(input.hold.pitch);
@@ -109,8 +107,8 @@ export class Aerobatics {
     pitch += flown; this.looped += flown;
     pitch = wrap(pitch);
     this.pitchHold = pitchHold;
-    const settledPitch = !pitchHold && Math.abs(pitch) <= L.pitch+SETTLED;
-    if (Math.abs(settledPitch ? this.looped+pitchTarget-pitch : this.looped) >= (pitchHold ? TAU : TAU-FULL_TURN_SLACK)) { tricks.push('loop'); this.looped -= Math.sign(this.looped)*TAU; }
+    const settledPitch = !pitchHold && Math.abs(pitch-pitchTarget) <= SETTLED;
+    if (pitchHold ? Math.abs(this.looped) >= TAU : settledPitch && Math.abs(this.looped) >= TAU-L.pitch-SLACK) { tricks.push('loop'); this.looped -= Math.sign(this.looped)*TAU; }
     if (settledPitch) this.looped = 0;
 
     // A split S counts once the plane is upright again on the new heading.
