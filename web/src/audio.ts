@@ -6,6 +6,12 @@ export class FlightAudio {
   private wind?: GainNode;
   private filter?: BiquadFilterNode;
   private noise?: AudioBuffer;
+  private unlock = () => {
+    void this.context?.resume().then(() => {
+      window.removeEventListener('pointerup',this.unlock);
+      window.removeEventListener('keydown',this.unlock);
+    }).catch(()=>{});
+  };
   muted=false;
   start() {
     try {
@@ -21,7 +27,11 @@ export class FlightAudio {
         this.wind=ctx.createGain(); this.wind.gain.value=0;
         source.connect(this.filter).connect(this.wind).connect(this.master); source.start();
       }
-      void this.context.resume().catch(()=>{});
+      if (this.context.state !== 'running') {
+        window.addEventListener('pointerup',this.unlock);
+        window.addEventListener('keydown',this.unlock);
+        this.unlock();
+      }
     } catch { /* Audio is optional when unavailable. */ }
   }
   toggle() {
