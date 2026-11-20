@@ -268,6 +268,7 @@ export class Island {
       const light = .81+.19*random(i, 24);
       mesh.setColorAt(i, shade.setRGB(light, light, light));
     });
+    mesh.name=kind;
     mesh.computeBoundingSphere(); this.scene.add(mesh);
   }
 

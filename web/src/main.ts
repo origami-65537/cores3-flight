@@ -4,6 +4,7 @@ import { CEILING, groundHeight, landmarks, launch, mist, nearStructure, pathHits
 import { Island } from './island';
 import { buildAircraft } from './aircraft';
 import { RenderQuality } from './render-quality';
+import { AirVisuals } from './air-visuals';
 import { SeaSpray } from './spray';
 import { FEEL, fovFromSpeed, nearMiss, skimDepth, skimPoints } from './feel';
 import { AIR, Momentum, coastEffect, rush, updraft, wind } from './air';
@@ -46,6 +47,7 @@ resizeRenderer();
 window.addEventListener('resize',resizeRenderer);
 document.addEventListener('visibilitychange',() => quality.resetSample());
 const island = new Island(scene);
+const airVisuals = new AirVisuals(scene);
 const spray = new SeaSpray(scene);
 const linePositions=new Float32Array(FEEL.speedLines.count*6);
 for(let i=0;i<FEEL.speedLines.count;i++) {
@@ -262,6 +264,7 @@ function animate() {
   camera.position.y=Math.max(camera.position.y,groundHeight(camera.position.x,camera.position.z)+2);
   camera.lookAt(lookTarget);
   island.update(visualDt,timeOfDay,mist(position.x,position.z),camera.position);
+  airVisuals.update(visualDt,elapsed,position,forward,quality.pixelRatio(1920,1080,1),started && !ended && !reducedMotion.matches);
   if(playing!==(started && !ended))document.body.classList.toggle('play',playing=started && !ended);
   showText(scoreDisplay,String(score).padStart(4,'0'));
   showText(speedDisplay,airspeed.toFixed(0));
