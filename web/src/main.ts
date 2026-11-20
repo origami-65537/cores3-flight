@@ -111,7 +111,7 @@ let started=false,ended=false,noticeUntil=0,fanfare=false,showStunts=false,stall
 const aero=new Aerobatics(), momentum=new Momentum(), heldAxis={roll:0,pitch:0}, trickCounts:Record<TrickKind,number>={barrelRoll:0,loop:0,splitS:0};
 const position = new THREE.Vector3(launch.x,launch.y,launch.z);
 const found=new Set<string>(), armed=landmarks.map(()=>true);
-const previous = new THREE.Vector3(), forward = new THREE.Vector3();
+const previous = new THREE.Vector3(), forward = new THREE.Vector3(), course = new THREE.Vector3();
 const notice = el('notice'), warning = el('warning');
 function flash(s:string) {if (!ended) {notice.textContent=s; noticeUntil=performance.now()+2200;}}
 function takeoff() {audio.start(); started=true; el('flight-overlay').hidden=true;}
@@ -204,10 +204,10 @@ function animate() {
     if(energy.pulledOut) {audio.boost(); if(now-lastSurgeCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'boost'});lastSurgeCue=now;}}
     heading+=Math.sin(bank)*turnFactor(pitch)*dt*FEEL.response.turn;
     forward.set(-Math.sin(heading)*Math.cos(pitch),Math.sin(pitch),-Math.cos(heading)*Math.cos(pitch));
-    position.addScaledVector(forward,speed*dt);
     // The air itself moves: wind carries the plane sideways and rising air over slopes lifts it.
     const breeze=wind(position,elapsed);
-    position.x+=breeze.x*dt; position.z+=breeze.z*dt; position.y+=updraft(position)*dt;
+    course.copy(forward).multiplyScalar(speed); course.x+=breeze.x; course.z+=breeze.z; course.y+=updraft(position);
+    position.addScaledVector(course,dt);
     position.y=Math.min(position.y,CEILING);
     // Far out over the sea the mist closes in and the flight carries on from the other side of the island.
     const back=wrap(position.x,position.z);
@@ -258,7 +258,8 @@ function animate() {
   if (notice.style.opacity!==opacity) notice.style.opacity=opacity;
   const flying=started && !ended, height=position.y-groundHeight(position.x,position.z)-FEEL.clearance;
   // Warn only when the path ahead really ends in something, so a clean pass under a bridge stays quiet.
-  const danger=pathHits(position,forward,speed*FEEL.lookAheadSeconds,FEEL.clearance);
+  const groundSpeed=course.length();
+  const danger=pathHits(position,groundSpeed?course.divideScalar(groundSpeed):forward,groundSpeed*FEEL.lookAheadSeconds,FEEL.clearance);
   const low=danger==='ground';
   if(flying && low && !wasLow && now-lastCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'pullup'}); lastCue=now;}
   wasLow=flying && low;
