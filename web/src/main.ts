@@ -107,14 +107,19 @@ function center() {
 el('center').onclick=center;
 const minSpeed = 22, speedRange = 38, cruiseThrottle = .4, cruiseSpeed = minSpeed+speedRange*cruiseThrottle;
 let heading=0,pitch=0,bank=0,speed=cruiseSpeed,throttle=cruiseThrottle,score=0,elapsed=0,timeOfDay=0;
-let started=false,ended=false,noticeUntil=0,fanfare=false,showStunts=false,stalledCue=false;
+let started=false,ended=false,parked=false,noticeUntil=0,fanfare=false,showStunts=false,stalledCue=false;
 const aero=new Aerobatics(), momentum=new Momentum(), heldAxis={roll:0,pitch:0}, trickCounts:Record<TrickKind,number>={barrelRoll:0,loop:0,splitS:0};
 const position = new THREE.Vector3(launch.x,launch.y,launch.z);
 const found=new Set<string>(), armed=landmarks.map(()=>true);
-const previous = new THREE.Vector3(), forward = new THREE.Vector3(), course = new THREE.Vector3();
+const previous = new THREE.Vector3(), forward = new THREE.Vector3(), course = new THREE.Vector3(), ahead = new THREE.Vector3();
 const notice = el('notice'), warning = el('warning');
 function flash(s:string) {if (!ended) {notice.textContent=s; noticeUntil=performance.now()+2200;}}
-function takeoff() {audio.start(); started=true; el('flight-overlay').hidden=true;}
+function takeoff() {audio.start(); started=true; parked=false; el('flight-overlay').hidden=true;}
+device.onHangar=down=>{
+  if(down) {parked=true; noticeUntil=0;}
+  else if(parked && !ended) takeoff();
+  else parked=false;
+};
 function resetFlight() {
   position.set(launch.x,launch.y,launch.z);
   heading=launch.heading; pitch=bank=score=elapsed=timeOfDay=0; found.clear(); armed.fill(true); fanfare=false; aero.reset(); stalledCue=false; trickCounts.barrelRoll=trickCounts.loop=trickCounts.splitS=0;
@@ -142,6 +147,7 @@ el('reset').onclick=reset; window.addEventListener('keydown',e=>{
   if(e.code==='Enter' && e.target===fullscreen)return;
   if(e.code==='KeyR')reset();
   if((e.code==='Enter' && (!started || ended)) || (e.code==='Space' && !started)) {e.preventDefault(); if(!started)takeoff(); else reset();}
+  else if(e.code==='Enter' && parked) takeoff();
   if(e.code==='KeyC')center();
   if(e.code==='KeyG')showStunts=!showStunts;
   if(e.code==='KeyM') {audio.toggle(); flash(audio.muted?'Audio muted':'Audio on');}
@@ -187,7 +193,8 @@ function animate() {
   const dt=now<hitstopUntil?0:visualDt;
   const key=keyboard.sample(), imu=device.sample(dt);
   const roll=THREE.MathUtils.clamp(key.roll+imu.roll,-1,1), climb=THREE.MathUtils.clamp(key.pitch+imu.pitch,-1,1);
-  if(started && !ended) {
+  let flying=started && !ended && !parked;
+  if(flying) {
     elapsed+=dt; throttle=THREE.MathUtils.clamp(throttle+key.throttle*dt*.3,0,1);
     previous.copy(position);
     // Past the normal tilt range the plane keeps rotating while the input is held; the usual limits return when it is let go.
@@ -216,7 +223,7 @@ function animate() {
       position.x=previous.x=back.x; position.z=previous.z=back.z;
     }
     const hit=touching(position,FEEL.clearance);
-    if (hit) finish(hit);
+    if (hit) {finish(hit); flying=false;}
     else {
       // A trick scores only once its last frame has cleared the island.
       for(const kind of flown.tricks) {score+=trickPoints(kind); trickCounts[kind]++; flash(`${TRICK_NAMES[kind]} +${trickPoints(kind)}`);}
@@ -226,11 +233,11 @@ function animate() {
       });
     }
   }
-  const airspeed=speed, view=heading+aero.view, stunting=aero.active({heading,pitch,bank});
+  const airspeed=parked?0:speed, view=heading+aero.view, stunting=aero.active({heading,pitch,bank});
   plane.position.copy(position); plane.rotation.set(pitch,heading,bank,'YXZ');
-  updatePropeller(dt, started && !ended && !reducedMotion.matches ? airspeed : 0);
-  audio.update(airspeed,started && !ended);
-  rushMix=THREE.MathUtils.damp(rushMix,started && !ended?rush(airspeed):0,FEEL.camera.rushSmoothing,visualDt);
+  updatePropeller(dt, flying && !reducedMotion.matches ? airspeed : 0);
+  audio.update(airspeed,flying);
+  rushMix=THREE.MathUtils.damp(rushMix,flying?rush(airspeed):0,FEEL.camera.rushSmoothing,visualDt);
   lineMaterial.opacity=rushMix*FEEL.speedLines.opacity;
   speedLines.position.z=(now%200)/200*FEEL.speedLines.length;
   camera.fov=THREE.MathUtils.damp(camera.fov,fovFromSpeed(airspeed),FEEL.fov.smoothing,visualDt); camera.updateProjectionMatrix();
@@ -254,12 +261,12 @@ function animate() {
   showText(scoreDisplay,String(score).padStart(4,'0'));
   showText(speedDisplay,airspeed.toFixed(0));
   showText(altDisplay,Math.max(0,position.y).toFixed(0));
-  const opacity=started && !ended && performance.now()<noticeUntil?'1':'0';
+  const opacity=flying && performance.now()<noticeUntil?'1':'0';
   if (notice.style.opacity!==opacity) notice.style.opacity=opacity;
-  const flying=started && !ended, height=position.y-groundHeight(position.x,position.z)-FEEL.clearance;
+  const height=position.y-groundHeight(position.x,position.z)-FEEL.clearance;
   // Warn only when the path ahead really ends in something, so a clean pass under a bridge stays quiet.
   const groundSpeed=course.length();
-  const danger=pathHits(position,groundSpeed?course.divideScalar(groundSpeed):forward,groundSpeed*FEEL.lookAheadSeconds,FEEL.clearance);
+  const danger=flying && pathHits(position,groundSpeed?ahead.copy(course).divideScalar(groundSpeed):forward,groundSpeed*FEEL.lookAheadSeconds,FEEL.clearance);
   const low=danger==='ground';
   if(flying && low && !wasLow && now-lastCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'pullup'}); lastCue=now;}
   wasLow=flying && low;
@@ -271,7 +278,7 @@ function animate() {
   if(flying && now-lastWhoosh>FEEL.nearMiss.cooldownMs && (groundPass || structurePass)) {audio.whoosh();lastWhoosh=now;}
   warning.hidden=!flying || !danger;
   showText(warning,low?'PULL UP':'OBSTACLE');
-  radarTimer+=dt; if(radarTimer>=.1) {radarTimer=0;device.send({t:'radar',h:THREE.MathUtils.radToDeg(heading),range:FEEL.radarRange,o:landmarks.map(({gate})=>[Math.round(gate.x-position.x),Math.round(gate.z-position.z)]),score,speed:Math.round(speed),alt:Math.round(position.y)});}
+  radarTimer+=dt; if(radarTimer>=.1) {radarTimer=0;device.send({t:'radar',h:THREE.MathUtils.radToDeg(heading),range:FEEL.radarRange,o:landmarks.map(({gate})=>[Math.round(gate.x-position.x),Math.round(gate.z-position.z)]),score,speed:Math.round(airspeed),alt:Math.round(position.y)});}
   renderer.render(scene,camera);
 }
 resetFlight(); animate();
