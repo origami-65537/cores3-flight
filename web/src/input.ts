@@ -1,10 +1,11 @@
 import { FEEL } from './feel';
-import { FlickDetector, type Gesture } from './stunts';
+import { HoldDetector, type Hold } from './stunts';
 
-export interface Controls { pitch: number; roll: number; yaw?: number; throttle: number; boost: boolean }
+/** hold names an axis kept past the normal tilt range: it rotates the plane for as long as it stays there. */
+export interface Controls { pitch: number; roll: number; yaw?: number; throttle: number; boost: boolean; hold?: Hold }
 export interface InputSource { sample(dt: number): Controls }
 export const neutral = (): Controls => ({pitch:0, roll:0, throttle:0, boost:false});
-/** gx, gy and gz are angular velocity in degrees per second; firmware older than the stunt update omits them. */
+/** gx, gy and gz are angular velocity in degrees per second; older firmware omits them and the game does not use them. */
 export interface Imu { t: 'imu'; r: number; p: number; y: number; b: number; gx?: number; gy?: number; gz?: number }
 export function parseImu(line: string): Imu | null {
   try {
@@ -34,7 +35,7 @@ export class Keyboard implements InputSource {
   }
   sample(): Controls {
     const k = (...codes: string[]) => Number(codes.some(c => this.keys.has(c)));
-    return {pitch:k('KeyW','ArrowUp')-k('KeyS','ArrowDown'), roll:k('KeyD','ArrowRight')-k('KeyA','ArrowLeft'), throttle:k('KeyE')-k('KeyQ'), boost:!!k('ShiftLeft','ShiftRight','Space')};
+    return {pitch:k('KeyW','ArrowUp')-k('KeyS','ArrowDown'), roll:k('KeyD','ArrowRight')-k('KeyA','ArrowLeft'), throttle:k('KeyE')-k('KeyQ'), boost:!!k('ShiftLeft','ShiftRight','Space'), hold:{roll:k('KeyL')-k('KeyJ'), pitch:k('KeyI')-k('KeyK')}};
   }
 }
 interface Port { readable: ReadableStream<Uint8Array> | null; writable: WritableStream<Uint8Array> | null; open(o:{baudRate:number}):Promise<void>; close():Promise<void> }
@@ -52,8 +53,7 @@ export class CoreS3 implements InputSource {
   private last?: number;
   private busy = false;
   private frames: number[] = [];
-  private detector = new FlickDetector();
-  private flicks: Gesture[] = [];
+  private holds = new HoldDetector();
   connected = false;
   onStatus: (s:string) => void = () => {};
   onCalibration: (ready:boolean) => void = () => {};
@@ -65,7 +65,7 @@ export class CoreS3 implements InputSource {
   }
   private startCentering(now:number) {
     this.centering = {started:now,anchor:this.imu.r,r:0,p:0,count:0};
-    this.filtered = neutral();
+    this.filtered = neutral(); this.holds.reset();
     this.onCalibration(false);
   }
   private receive(line:string) {
@@ -77,7 +77,7 @@ export class CoreS3 implements InputSource {
     const interrupted = this.last !== undefined && now-this.last > IMU_TIMEOUT_MS;
     this.imu = msg; this.last = now;
     this.frames.push(now); while (this.frames.length && now-this.frames[0] > 1000) this.frames.shift();
-    if (interrupted) { this.filtered = neutral(); this.detector.reset(); }
+    if (interrupted) { this.filtered = neutral(); this.holds.reset(); }
     if (first || recenter || (interrupted && this.centering)) this.startCentering(now);
     const capture = this.centering;
     if (capture) {
@@ -89,18 +89,7 @@ export class CoreS3 implements InputSource {
         this.centering = undefined;
         this.onCalibration(true);
       }
-      this.detector.reset();
-    } else if (msg.gx !== undefined && msg.gy !== undefined) {
-      const {roll,pitch} = this.flightTilt();
-      const gesture = this.detector.update({t:now, roll, pitch, rollRate:msg.gy, pitchRate:msg.gx});
-      if (gesture) this.flicks.push(gesture);
-    } else this.detector.reset();
-  }
-  /** Flicks detected since the last call. */
-  gestures() { return this.flicks.splice(0); }
-  flickDebug() {
-    const {armed,progress,last,rejected,counts} = this.detector;
-    return {supported:this.imu.gx !== undefined, rollRate:this.imu.gy ?? 0, pitchRate:this.imu.gx ?? 0, centering:!!this.centering, armed, progress, last, rejected, counts};
+    }
   }
   connectWifi(url: string) {
     if (this.connected) return Promise.resolve();
@@ -169,7 +158,8 @@ export class CoreS3 implements InputSource {
     const {roll,pitch} = this.flightTilt();
     this.filtered.pitch += (axis(pitch)-this.filtered.pitch)*blend;
     this.filtered.roll += (axis(roll)-this.filtered.roll)*blend;
-    return {...this.filtered,boost};
+    const hold = this.holds.update(roll,pitch);
+    return hold.roll || hold.pitch ? {...this.filtered,boost,hold} : {...this.filtered,boost};
   }
   send(data:unknown) {
     if (this.socket) { if (this.socket.readyState === WebSocket.OPEN && this.socket.bufferedAmount < 4096) this.socket.send(JSON.stringify(data)); return; }

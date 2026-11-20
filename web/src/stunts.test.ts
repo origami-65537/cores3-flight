@@ -1,127 +1,97 @@
-import { test } from 'node:test';
-import { strict as a } from 'node:assert';
-import { FlickDetector, STUNT, stepTrick, trickFor, trickFrame, trickPoints, type Gesture, type Trick } from './stunts';
+import a from 'node:assert/strict';
+import test from 'node:test';
+import { Aerobatics, HoldDetector, STUNT, steepness, turnFactor, type Hold, type TrickKind } from './stunts';
 
-/** Feeds 50 Hz samples of a tilt path given as [milliseconds, roll, pitch] keyframes and returns what fired. */
-function play(detector:FlickDetector, keys:[number,number,number][], start=0) {
-  const fired:Gesture[] = [];
-  let previous = {roll:keys[0][1], pitch:keys[0][2]};
-  for (let t = keys[0][0]; t <= keys[keys.length-1][0]; t += 20) {
-    const i = Math.max(1, keys.findIndex(k => k[0] >= t)), [t0,r0,p0] = keys[i-1], [t1,r1,p1] = keys[i];
-    const k = (t-t0)/(t1-t0), ease = k*k*(3-2*k), roll = r0+(r1-r0)*ease, pitch = p0+(p1-p0)*ease;
-    const gesture = detector.update({t:start+t, roll, pitch, rollRate:(roll-previous.roll)/.02, pitchRate:(pitch-previous.pitch)/.02});
-    if (gesture) fired.push(gesture);
-    previous = {roll,pitch};
+const DT = 1/60, deg = (n:number) => n*Math.PI/180;
+const none:Hold = {roll:0, pitch:0};
+/** Flies the attitude model through a list of [seconds, hold] phases and reports what happened. */
+function fly(phases:[number,Partial<Hold>][], speed=50, controls={roll:0, climb:0}) {
+  const aero = new Aerobatics();
+  let attitude = {heading:0, pitch:0, bank:0}, altitude = 0, maxPitch = 0, maxBank = 0, stalled = false;
+  const tricks:TrickKind[] = [];
+  for (const [seconds,hold] of phases) for (let t = 0; t < seconds-1e-9; t += DT) {
+    const step = aero.step(attitude,{...controls, hold:{...none,...hold}, speed, bankResponse:12, pitchResponse:9},DT);
+    attitude = step; tricks.push(...step.tricks);
+    altitude += Math.sin(attitude.pitch)*speed*DT;
+    maxPitch = Math.max(maxPitch,Math.abs(attitude.pitch)); maxBank = Math.max(maxBank,Math.abs(attitude.bank));
+    stalled ||= aero.stalled;
   }
-  return fired;
+  return {...attitude, tricks, altitude, maxPitch, maxBank, stalled, active:aero.active(attitude), view:aero.view};
 }
-const settle:[number,number,number][] = [[0,0,0],[200,0,0]];
+const near = (actual:number, expected:number, tolerance:number, label:string) => a.ok(Math.abs(actual-expected) <= tolerance, `${label}: ${actual} vs ${expected}`);
 
-test('quick twists that snap back are left and right flicks', () => {
-  const detector = new FlickDetector();
-  a.deepEqual(play(detector, [...settle,[340,50,0],[480,0,0],[700,0,0]]), ['twistRight']);
-  a.deepEqual(play(detector, [...settle,[340,-50,0],[480,0,0],[700,0,0]], 1000), ['twistLeft']);
-  a.deepEqual(detector.counts, {twistLeft:1,twistRight:1,pull:0,push:0});
-  a.ok(detector.last!.rate > STUNT.flick.rate && detector.last!.swing >= STUNT.flick.rollSwing);
+test('a hold starts at 50 degrees, ends below 38 and follows one axis at a time', () => {
+  const holds = new HoldDetector();
+  a.deepEqual(holds.update(45,0), none);
+  a.deepEqual(holds.update(50,0), {roll:1, pitch:0});
+  a.deepEqual(holds.update(40,70), {roll:1, pitch:0});
+  a.deepEqual(holds.update(37,10), none);
+  a.deepEqual(holds.update(0,-55), {roll:0, pitch:-1});
+  a.deepEqual(holds.update(0,55), {roll:0, pitch:1});
+  holds.reset();
+  a.deepEqual(holds.update(-60,20), {roll:-1, pitch:0});
 });
 
-test('a quick pull toward you and a quick push away are separate flicks', () => {
-  const detector = new FlickDetector();
-  a.deepEqual(play(detector, [...settle,[360,0,55],[900,0,55]]), ['pull']);
-  a.deepEqual(play(detector, [[0,0,55],[500,0,0],[700,0,0],[860,0,-55],[1200,0,-55]], 1000), ['push']);
+test('without a hold the plane keeps its normal 45 degree bank and 28 degree pitch limits', () => {
+  const flight = fly([[2,{}]],50,{roll:1, climb:1});
+  near(flight.bank,-STUNT.limits.bank,.001,'bank'); near(flight.pitch,STUNT.limits.pitch,.001,'pitch');
+  a.deepEqual(flight.tricks, []); a.equal(flight.active, false);
 });
 
-test('steering, slow tilts and held banks never fire', () => {
-  const detector = new FlickDetector();
-  a.deepEqual(play(detector, [...settle,[1200,60,0],[2200,0,45],[3200,0,-45],[4200,0,0]]), []);
-  a.deepEqual(play(detector, [...settle,[320,30,0],[600,-30,0],[900,30,20],[1200,0,0]], 5000), []);
-  a.deepEqual(play(detector, [...settle,[340,50,0],[1200,50,0]], 7000), []);
-  a.match(detector.rejected, /held/);
+test('the plane rolls only while the roll is held, and each full turn is one barrel roll', () => {
+  const turn = 2*Math.PI/STUNT.roll.rate;
+  const once = fly([[turn,{roll:1}],[1,{}]]);
+  a.deepEqual(once.tricks, ['barrelRoll']); near(once.bank,0,.01,'level after one roll');
+  a.deepEqual(fly([[turn*3,{roll:-1}],[1,{}]]).tricks, ['barrelRoll','barrelRoll','barrelRoll']);
+  const early = fly([[turn*.4,{roll:1}],[1,{}]]);
+  a.deepEqual(early.tricks, [], 'let go before halfway: the plane rolls back');
+  near(early.bank,0,.01,'level after rolling back'); a.ok(early.maxBank < deg(160));
+  a.deepEqual(fly([[turn*.6,{roll:1}],[1,{}]]).tricks, ['barrelRoll'], 'let go past halfway: the roll finishes');
+  const stopped = fly([[turn*.25,{roll:1}],[.05,{}]]);
+  a.ok(stopped.maxBank < deg(95), 'rotation stops when the hold ends');
 });
 
-test('the swing back after a flick does not fire the opposite flick', () => {
-  const detector = new FlickDetector();
-  a.deepEqual(play(detector, [...settle,[360,0,55],[420,0,55],[560,0,-5],[900,0,0]]), ['pull']);
-  a.deepEqual(play(detector, [[0,0,0],[100,0,0],[240,0,40],[380,0,-8],[700,0,0]], 2000), []);
-  a.match(detector.rejected, /too small/);
+test('a held pull flies a full loop that closes at its entry height on the same heading', () => {
+  const turn = 2*Math.PI/STUNT.loop.rate;
+  const loop = fly([[turn,{pitch:1}],[1,{}]]);
+  a.deepEqual(loop.tricks, ['loop']);
+  near(loop.heading,0,1e-9,'heading'); near(loop.pitch,0,.01,'pitch'); near(loop.altitude,0,3,'altitude');
+  near(loop.maxPitch,2*Math.PI-STUNT.limits.pitch,.1,'went all the way round');
 });
 
-test('a swing that reaches full tilt after the 350 ms window is not a flick', () => {
-  const at = (t:number, pitch:number, pitchRate:number) => ({t, roll:0, pitch, rollRate:0, pitchRate});
-  const run = (lastT:number) => {
-    const detector = new FlickDetector();
-    detector.update(at(0,0,0));
-    detector.update(at(20,6,300));
-    detector.update(at(340,44,60));
-    return [detector.update(at(lastT,46,60)), detector.rejected];
-  };
-  a.deepEqual(run(370), ['pull','']);
-  a.deepEqual(run(380), [null,'pitch: swing 46° too small']);
+test('a pull below 35 m/s stalls: the nose stays inside the normal limit and nothing scores', () => {
+  const slow = fly([[3,{pitch:1}]],30);
+  a.equal(slow.stalled, true); a.deepEqual(slow.tricks, []);
+  a.ok(slow.maxPitch <= STUNT.limits.pitch+.01);
+  a.equal(fly([[.5,{pitch:1}]],36).stalled, false);
 });
 
-test('a diagonal swing is not a flick', () => {
-  const detector = new FlickDetector();
-  a.deepEqual(play(detector, [...settle,[340,50,60],[480,0,0],[700,0,0]]), []);
-  a.match(detector.rejected, /two axes/);
+test('a push held to inverted and let go is a split S: opposite heading, upright, about 40 m lower', () => {
+  const half = Math.PI/STUNT.loop.rate;
+  const split = fly([[half,{pitch:-1}],[1.5,{}]],52);
+  a.deepEqual(split.tricks, ['splitS']);
+  near(split.heading,Math.PI,1e-9,'heading reversed'); near(split.bank,0,.02,'upright'); near(split.pitch,0,.02,'level');
+  near(split.altitude,-2*52/STUNT.loop.rate,3,'height lost'); near(split.view,0,.05,'camera has come round');
+  const justReleased = fly([[half,{pitch:-1}],[DT,{}]],52);
+  a.deepEqual(justReleased.tricks, [], 'it scores only once the plane is upright again');
+  near(Math.abs(justReleased.bank),Math.PI,.3,'inverted on the new heading'); near(Math.abs(justReleased.view),Math.PI,.2,'camera has not cut');
 });
 
-test('the next flick waits until the device is back near neutral', () => {
-  const detector = new FlickDetector();
-  a.deepEqual(play(detector, [...settle,[360,0,55],[500,0,30],[660,0,85],[900,0,85]]), ['pull']);
-  a.equal(detector.armed, false);
-  a.deepEqual(play(detector, [[0,0,85],[500,0,0],[700,0,0],[860,0,55],[1000,0,55]], 2000), ['pull']);
+test('other half turns reverse the plane without scoring, and a shallow push just dives', () => {
+  const half = Math.PI/STUNT.loop.rate;
+  const immelmann = fly([[half,{pitch:1}],[1.5,{}]]);
+  a.deepEqual(immelmann.tricks, []); near(immelmann.heading,Math.PI,1e-9,'heading');
+  const shortPush = fly([[half*.6,{pitch:-1}],[1.5,{}]]);
+  a.deepEqual(shortPush.tricks, [], 'reversed before 135 degrees'); near(shortPush.heading,Math.PI,1e-9,'heading');
+  const dive = fly([[half*.4,{pitch:-1}],[1.5,{}]]);
+  a.deepEqual(dive.tricks, []); near(dive.heading,0,1e-9,'heading'); near(dive.pitch,0,.01,'pulled out');
+  a.deepEqual(fly([[half*1.7,{pitch:-1}],[1.5,{}]]).tricks, ['loop'], 'let go in the last quarter: the outside loop finishes');
 });
 
-function fly(trick:Trick, speed:number) {
-  const flight = {x:0, y:100, z:0, top:100, bottom:100, heading:.4};
-  let done = false, frame = trickFrame(trick.kind,trick.dir,0);
-  while (!done) {
-    const step = stepTrick(trick, 1/60, flight.heading, 0, speed);
-    flight.x += step.dx; flight.y += step.dy; flight.z += step.dz;
-    flight.top = Math.max(flight.top,flight.y); flight.bottom = Math.min(flight.bottom,flight.y);
-    done = step.done; frame = step.frame;
-  }
-  return {...flight, frame};
-}
-
-test('tricks map to gestures, and a loop needs speed', () => {
-  a.deepEqual(trickFor('twistLeft',40), {kind:'barrelRoll',dir:-1,t:0});
-  a.deepEqual(trickFor('twistRight',20), {kind:'barrelRoll',dir:1,t:0});
-  a.equal(trickFor('pull',STUNT.loop.minSpeed).kind, 'loop');
-  a.equal(trickFor('pull',STUNT.loop.minSpeed-.1).kind, 'stall');
-  a.equal(trickFor('push',20).kind, 'splitS');
-  a.deepEqual(['barrelRoll','loop','splitS','stall'].map(k => trickPoints(k as Trick['kind'])), [100,300,250,0]);
-});
-
-test('barrel roll turns once and sinks 3 m', () => {
-  const end = fly(trickFor('twistRight',40), 40);
-  a.ok(Math.abs(end.frame.roll+Math.PI*2) < 1e-9);
-  a.ok(Math.abs(end.y-97) < .01);
-  a.ok(Math.abs(end.frame.side) < 1e-9 && Math.abs(end.frame.lift) < 1e-9);
-  a.ok(Math.abs(fly(trickFor('twistLeft',40), 40).frame.roll-Math.PI*2) < 1e-9);
-});
-
-test('loop is a full vertical circle that returns to its entry height', () => {
-  const end = fly(trickFor('pull',40), 40);
-  a.ok(Math.abs(end.frame.pitch-Math.PI*2) < 1e-9);
-  a.ok(end.top > 115, `top ${end.top}`);
-  a.ok(Math.abs(end.y-100) < 1, `exit ${end.y}`);
-  a.equal(end.frame.speed, 1);
-});
-
-test('split S reverses direction and loses 40 m at any speed', () => {
-  for (const speed of [25,40,66]) {
-    const end = fly(trickFor('push',speed), speed);
-    a.ok(Math.abs(end.y-60) < .01, `exit ${end.y}`);
-    a.ok(Math.abs(end.frame.pitch+Math.PI) < 1e-9 && Math.abs(Math.abs(end.frame.roll)-Math.PI) < 1e-9 && Math.abs(end.frame.yaw-Math.PI) < 1e-9);
-    a.equal(end.bottom, end.y);
-  }
-});
-
-test('a slow loop stalls and falls', () => {
-  const end = fly(trickFor('pull',30), 30);
-  a.ok(end.top > 101 && end.top < 115);
-  a.ok(end.y < 75, `exit ${end.y}`);
-  a.ok(Math.abs(end.frame.pitch) < 1e-9);
-  a.equal(end.frame.speed, STUNT.stall.exitSpeed);
+test('turning reverses on the back of a loop and steep flight trades speed for height', () => {
+  a.equal(turnFactor(0), 1); a.equal(turnFactor(STUNT.limits.pitch), 1); a.equal(turnFactor(Math.PI), -1);
+  near(turnFactor(Math.PI/2),0,1e-9,'vertical');
+  a.equal(steepness(0), 0); a.equal(steepness(-STUNT.limits.pitch), 0);
+  a.ok(steepness(Math.PI/2) > .5); a.ok(steepness(-Math.PI/2) < -.5);
+  near(steepness(deg(170)),0,1e-9,'inverted and nearly level');
 });

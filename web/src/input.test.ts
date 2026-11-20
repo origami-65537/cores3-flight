@@ -142,37 +142,23 @@ test('a stale stream falls back to neutral and a resumed stream does not replay 
   });
 });
 
-test('device flicks become gestures once, and never while centering or on firmware without angular velocity', async t => {
+test('holding the device past the normal tilt range reports a hold on one axis until the hand comes back', async t => {
   await withSerial(t, async ({ device, frame, calibrations }) => {
-    const move = async (r:number, p:number, to:{r:number,p:number}, gyro=true) => {
-      // 140 ms swing sampled at 50 Hz; device r is game pitch and device p is game roll.
-      for (let i = 1; i <= 7; i++) {
-        const k = i/7, e = k*k*(3-2*k), d = 6*k*(1-k)/.14;
-        await frame(r+(to.r-r)*e, p+(to.p-p)*e, 0, gyro ? {gx:(to.r-r)*d, gy:(to.p-p)*d, gz:0} : undefined);
-      }
-    };
-    const rest = async (r:number, p:number, gyro=true) => { for (let i = 0; i < 10; i++) await frame(r, p, 0, gyro ? {gx:0,gy:0,gz:0} : undefined); };
-    await rest(17, -12); await rest(17, -12);
+    const pose = async (r:number, p:number) => { for (let i = 0; i < 3; i++) await frame(r, p); return device.sample(.02).hold; };
+    for (let i = 0; i < 12; i++) await frame(17, -12);
     a.deepEqual(calibrations, [false, true]);
-    a.equal(device.flickDebug().supported, true);
-    await move(17, -12, {r:72,p:-12});
-    a.deepEqual(device.gestures(), ['pull']);
-    a.deepEqual(device.gestures(), []);
-    await move(72, -12, {r:17,p:-12}); await rest(17, -12);
-    await move(17, -12, {r:17,p:-67}); await move(17, -67, {r:17,p:-12});
-    a.deepEqual(device.gestures(), ['twistLeft']);
-    await rest(17, -12);
-    await move(17, -12, {r:-38,p:-12});
-    a.deepEqual(device.gestures(), ['push']);
-    a.deepEqual(device.flickDebug().counts, {twistLeft:1,twistRight:0,pull:1,push:1});
-    await move(-38, -12, {r:17,p:-12}); await rest(17, -12, false);
-    await move(17, -12, {r:72,p:-12}, false);
-    a.deepEqual(device.gestures(), []);
-    a.equal(device.flickDebug().supported, false);
-    await move(72, -12, {r:17,p:-12}); await rest(17, -12);
+    // Device r is game pitch and device p is game roll, both relative to the centred pose (17, -12).
+    a.deepEqual(await pose(17, 33), undefined, '45 degrees is a hard turn, not a hold');
+    a.deepEqual(await pose(17, 40), {roll:1, pitch:0});
+    a.deepEqual(await pose(75, 40), {roll:1, pitch:0}, 'the other axis is ignored while one is held');
+    a.deepEqual(await pose(17, 28), {roll:1, pitch:0}, 'still held at 40 degrees');
+    a.deepEqual(await pose(17, 24), undefined);
+    a.deepEqual(await pose(17, -64), {roll:-1, pitch:0});
+    a.deepEqual(await pose(17, -12), undefined);
+    a.deepEqual(await pose(69, -12), {roll:0, pitch:1});
+    a.deepEqual(await pose(-35, -12), {roll:0, pitch:-1});
     a.equal(device.calibrate(), true);
-    await move(17, -12, {r:72,p:-12});
-    a.deepEqual(device.gestures(), []);
+    a.equal(device.sample(.02).hold, undefined, 'no hold while centering');
   });
 });
 
