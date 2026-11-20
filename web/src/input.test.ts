@@ -61,6 +61,14 @@ test('Wi-Fi uses the same center and roll wrap and re-centers after reconnecting
   frame(47,18);
   a.ok(device.sample(.05).roll > .3);
   await assertLandscapeGestures(device, frame);
+
+  const events:boolean[] = [];
+  device.onHangar = parked => events.push(parked);
+  for (let i = 0; i < 21; i++) frame(178,0);
+  socket.onclose?.();
+  await connect();
+  for (let i = 0; i < 30; i++) frame(0,0);
+  a.deepEqual(events,[true], 'a new connection must not emit pickup from the old one');
 });
 
 test('USB maps all four landscape tilt gestures to the matching flight axes', async t => {
@@ -159,6 +167,55 @@ test('holding the device past the normal tilt range reports a hold on one axis u
     a.deepEqual(await pose(-35, -12), {roll:0, pitch:-1});
     a.equal(device.calibrate(), true);
     a.equal(device.sample(.02).hold, undefined, 'no hold while centering');
+  });
+});
+
+test('hangar uses sustained absolute screen pose and silently re-centers on pickup', async t => {
+  await withSerial(t, async ({ device, frame, advance, calibrations }) => {
+    const events:boolean[] = [];
+    device.onHangar = parked => events.push(parked);
+    const hold = async (r:number,p:number,n:number,b=0) => {
+      for (let i = 0; i < n; i++) await frame(r,p,b);
+    };
+
+    await hold(17,-12,10);
+    await hold(179,30,25); // One axis reads upside down, but the screen is not flat enough.
+    await hold(179,0,20); // 380 ms, short of parking.
+    await frame(70,0);
+    a.deepEqual(events,[]);
+
+    for (let i = 0; i < 21; i++) await frame(i % 2 ? -179 : 179,0);
+    await hold(-179,0,24,3);
+    a.deepEqual(events,[true]);
+    a.deepEqual(device.sample(.05),neutral());
+    a.equal(device.calibrate(),false);
+
+    await hold(70,0,16); // Lifting through vertical does not start a flight.
+    await frame(14,8);
+    advance(501);
+    a.deepEqual(events,[true]);
+    await hold(14,8,10); // The missing frames do not count toward pickup.
+    a.deepEqual(events,[true]);
+    await frame(14,8);
+    a.deepEqual(events,[true,false]);
+    a.deepEqual(device.sample(.05),neutral());
+    await hold(14,8,9);
+    a.deepEqual(device.sample(.05),neutral());
+    a.deepEqual(calibrations,[false,true]);
+    await frame(29,8);
+    a.ok(device.sample(.05).pitch > 0);
+    a.equal(device.sample(.05).roll,0);
+  });
+});
+
+test('connecting while the CoreS3 is face down still allows pickup takeoff', async t => {
+  await withSerial(t, async ({ device, frame }) => {
+    const events:boolean[] = [];
+    device.onHangar = parked => events.push(parked);
+    for (let i = 0; i < 21; i++) await frame(-178,3);
+    for (let i = 0; i < 30; i++) await frame(10,3);
+    a.deepEqual(events,[true,false]);
+    a.deepEqual(device.sample(.05),neutral());
   });
 });
 
