@@ -5,7 +5,7 @@ import { HoldDetector, type Hold } from './stunts';
 export interface Controls { pitch: number; roll: number; yaw?: number; throttle: number; boost: boolean; hold?: Hold }
 export interface InputSource { sample(dt: number): Controls }
 export const neutral = (): Controls => ({pitch:0, roll:0, throttle:0, boost:false});
-/** gx, gy and gz are angular velocity in degrees per second; older firmware omits them and the game does not use them. */
+/** gx, gy and gz are angular velocity in degrees per second; older firmware omits them. */
 export interface Imu { t: 'imu'; r: number; p: number; y: number; b: number; gx?: number; gy?: number; gz?: number }
 export function parseImu(line: string): Imu | null {
   try {
@@ -44,6 +44,7 @@ const CENTER_WINDOW_MS = 180;
 const HANGAR_FRAME_GAP_MS = 120;
 const PARK_MS = 400, PICKUP_MS = 200;
 const FACE_DOWN = -Math.cos(20*Math.PI/180), FACE_UP = Math.cos(45*Math.PI/180);
+const PICKUP_TILT_DEG = 70, PICKUP_MOTION_MS = 2000;
 const relativeRoll = (roll:number, center:number) => ((roll-center+180)%360+360)%360-180;
 export class CoreS3 implements InputSource {
   private port?: Port;
@@ -59,6 +60,7 @@ export class CoreS3 implements InputSource {
   private holds = new HoldDetector();
   private hangarParked = false;
   private poseSince?: number;
+  private pickup = {x:0,y:0,lastMotion:-Infinity};
   connected = false;
   onStatus: (s:string) => void = () => {};
   onCalibration: (ready:boolean) => void = () => {};
@@ -75,10 +77,24 @@ export class CoreS3 implements InputSource {
     if (notify) this.onCalibration(false);
   }
   private updateHangar(msg:Imu, now:number, gap:number) {
-    if (gap > HANGAR_FRAME_GAP_MS) this.poseSince = undefined;
+    const continuous = gap <= HANGAR_FRAME_GAP_MS;
+    if (!continuous) this.poseSince = undefined;
+    if (this.hangarParked) {
+      if (!continuous || now-this.pickup.lastMotion > PICKUP_MOTION_MS) this.pickup = {x:0,y:0,lastMotion:-Infinity};
+      const {gx=0,gy=0} = msg;
+      if (continuous && Math.hypot(gx,gy) >= 8) {
+        this.pickup.x += gx*gap/1000;
+        this.pickup.y += gy*gap/1000;
+        this.pickup.lastMotion = now;
+      }
+    }
     // The screen normal uses uncentered device angles; cos(r) is continuous across ±180°.
     const normal = Math.cos(msg.r*Math.PI/180)*Math.cos(msg.p*Math.PI/180);
-    if (!(this.hangarParked ? normal >= FACE_UP : normal <= FACE_DOWN)) {
+    // A stationary face-down CoreS3 can report r near zero when the firmware filter averages ±180°.
+    const target = this.hangarParked
+      ? normal >= FACE_UP && Math.hypot(this.pickup.x,this.pickup.y) >= PICKUP_TILT_DEG
+      : msg.gx !== undefined && normal <= FACE_DOWN;
+    if (!target) {
       this.poseSince = undefined;
       return;
     }
@@ -86,6 +102,7 @@ export class CoreS3 implements InputSource {
     if (now-this.poseSince >= (this.hangarParked ? PICKUP_MS : PARK_MS)) {
       this.hangarParked = !this.hangarParked;
       this.poseSince = undefined;
+      this.pickup = {x:0,y:0,lastMotion:-Infinity};
     }
   }
   private receive(line:string) {

@@ -38,9 +38,9 @@ test('Wi-Fi uses the same center and roll wrap and re-centers after reconnecting
     socket.onopen?.();
     await pending;
   }
-  function frame(r:number,p:number) {
+  function frame(r:number,p:number,gyro?:{gx:number,gy:number,gz:number}) {
     now += 20;
-    socket.onmessage?.({data:JSON.stringify({t:'imu',r,p,y:0,b:0})});
+    socket.onmessage?.({data:JSON.stringify({t:'imu',r,p,y:0,b:0,...gyro})});
   }
 
   await connect();
@@ -64,7 +64,9 @@ test('Wi-Fi uses the same center and roll wrap and re-centers after reconnecting
 
   const events:boolean[] = [];
   device.onHangar = parked => events.push(parked);
-  for (let i = 0; i < 21; i++) frame(178,0);
+  for (let i = 0; i < 30; i++) frame(178,0);
+  a.deepEqual(events,[], 'older firmware without gyroscope rates can steer but cannot park');
+  for (let i = 0; i < 21; i++) frame(178,0,{gx:0,gy:0,gz:0});
   socket.onclose?.();
   await connect();
   for (let i = 0; i < 30; i++) frame(0,0);
@@ -174,29 +176,42 @@ test('hangar uses sustained absolute screen pose and silently re-centers on pick
   await withSerial(t, async ({ device, frame, advance, calibrations }) => {
     const events:boolean[] = [];
     device.onHangar = parked => events.push(parked);
+    const pose = (r:number,p:number,b=0,gx=0) => frame(r,p,b,{gx,gy:0,gz:0});
     const hold = async (r:number,p:number,n:number,b=0) => {
-      for (let i = 0; i < n; i++) await frame(r,p,b);
+      for (let i = 0; i < n; i++) await pose(r,p,b);
     };
 
     await hold(17,-12,10);
     await hold(179,30,25); // One axis reads upside down, but the screen is not flat enough.
     await hold(179,0,20); // 380 ms, short of parking.
-    await frame(70,0);
+    await pose(70,0);
     a.deepEqual(events,[]);
 
-    for (let i = 0; i < 21; i++) await frame(i % 2 ? -179 : 179,0);
+    for (let i = 0; i < 21; i++) await pose(i % 2 ? -179 : 179,0);
     await hold(-179,0,24,3);
     a.deepEqual(events,[true]);
     a.deepEqual(device.sample(.05),neutral());
     a.equal(device.calibrate(),false);
 
-    await hold(70,0,16); // Lifting through vertical does not start a flight.
-    await frame(14,8);
+    let filtered = -179;
+    for (let i = 0; i < 110; i++) {
+      filtered = .98*filtered+.02*(i % 2 ? -179 : 179);
+      await pose(filtered,0);
+    }
+    a.deepEqual(events,[true], 'a stationary down-facing device can report r near zero');
+    for (let i = 1; i <= 15; i++) await pose(179-i*7,0,0,-350);
+    a.deepEqual(events,[true], 'lifting through vertical does not start a flight');
+    await pose(14,8);
     advance(501);
     a.deepEqual(events,[true]);
-    await hold(14,8,10); // The missing frames do not count toward pickup.
+    await hold(14,8,20); // A sensor gap invalidates a partial pickup.
     a.deepEqual(events,[true]);
-    await frame(14,8);
+
+    for (let i = 1; i <= 24; i++) await pose(179-i*7,8,0,-350);
+    // The last five frames are upright; six more are needed for the full dwell.
+    await hold(14,8,5);
+    a.deepEqual(events,[true]);
+    await pose(14,8);
     a.deepEqual(events,[true,false]);
     a.deepEqual(device.sample(.05),neutral());
     await hold(14,8,9);
@@ -212,7 +227,8 @@ test('connecting while the CoreS3 is face down still allows pickup takeoff', asy
   await withSerial(t, async ({ device, frame }) => {
     const events:boolean[] = [];
     device.onHangar = parked => events.push(parked);
-    for (let i = 0; i < 21; i++) await frame(-178,3);
+    for (let i = 0; i < 21; i++) await frame(-178,3,0,{gx:0,gy:0,gz:0});
+    for (let i = 1; i <= 24; i++) await frame(-178+i*7,3,0,{gx:350,gy:0,gz:0});
     for (let i = 0; i < 30; i++) await frame(10,3);
     a.deepEqual(events,[true,false]);
     a.deepEqual(device.sample(.05),neutral());
