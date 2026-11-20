@@ -12,7 +12,7 @@
 @keyframes warning-pulse{to{box-shadow:0 0 0 6px #c8402f55}}@keyframes crash-flash{from{background:#e332327d}to{background:transparent}}
 .instruments strong{font-size:24px;white-space:nowrap}
 body:not(.play) .instruments,body.play:not(.peek) header,body.play:not(.peek) footer{display:none}
-body.play.peek .instruments{top:118px}
+body.play.peek .instruments{top:calc(var(--header-height,112px) + 6px)}
 @media(max-height:700px){.flight-card{padding:20px}}
 @media(prefers-reduced-motion:reduce){#warning{animation:none}}
 header,footer{z-index:7}
@@ -21,7 +21,6 @@ header,footer{z-index:7}
   header{padding:12px 18px}
   .instruments{right:12px;top:12px;gap:14px;padding:8px 12px}
   .instruments strong{font-size:18px}
-  body.play.peek .instruments{top:76px}
   footer{padding:8px 12px;flex-wrap:wrap;gap:6px}
   .controls{gap:6px 12px;font-size:9px}
   .actions button{padding:8px 10px}
@@ -30,7 +29,6 @@ header,footer{z-index:7}
 @media(max-width:520px){
   header{padding:8px 12px}
   .instruments em{font-size:9px;margin-left:3px}
-  body.play.peek .instruments{top:64px}
 }
 #flick-debug{position:absolute;left:40px;bottom:92px;margin:0;padding:10px 12px;border-radius:6px;background:#173c46d9;color:#e8f6df;font:11px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,'Noto Sans JP',monospace;pointer-events:none;white-space:pre;z-index:4}
 @media(max-width:850px),(max-height:600px){#flick-debug{left:12px;bottom:78px;font-size:9px;padding:6px 8px}}

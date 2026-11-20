@@ -197,7 +197,7 @@ function takeoff() {audio.start(); started=true; el('flight-overlay').hidden=tru
 function resetFlight() {
   position.set(launch.x,launch.y,launch.z);
   heading=pitch=bank=score=elapsed=nextGate=ringsHit=0; trick=null;
-  speed=cruiseSpeed; throttle=cruiseThrottle; ended=false;
+  speed=cruiseSpeed; throttle=cruiseThrottle; ended=false; noticeUntil=0;
   streak=0; hitstopUntil=0; wasBoosting=false; wasLow=false; skimmedGround=false; boostMix=0; lastWhoosh=lastCue=lastBoostCue=-Infinity;
   if(rewardRing)rewardRing.material.dispose();
   rewardRing=null; particles.visible=false;
@@ -258,10 +258,13 @@ function showText(element:HTMLElement,value:string) {
 const behind=new THREE.Vector3(), lookTarget=new THREE.Vector3(), up=new THREE.Vector3(0,1,0);
 // Header and footer stay off screen during play; moving the mouse, touching the screen or pressing Tab brings them back for a moment.
 let playing=false, peekTimer=0;
+const placeBelowHeader=()=>document.body.style.setProperty('--header-height',`${el('app').querySelector('header')!.offsetHeight}px`);
 function peek() {
-  document.body.classList.add('peek'); clearTimeout(peekTimer);
+  if(!document.body.classList.contains('peek')){document.body.classList.add('peek'); placeBelowHeader();}
+  clearTimeout(peekTimer);
   peekTimer=window.setTimeout(()=>document.body.classList.remove('peek'),2500);
 }
+window.addEventListener('resize',()=>{if(document.body.classList.contains('peek'))placeBelowHeader();});
 window.addEventListener('pointermove',peek); window.addEventListener('pointerdown',peek);
 window.addEventListener('keydown',e=>{if(e.code==='Tab')peek();});
 function animate() {
