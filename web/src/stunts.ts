@@ -16,7 +16,8 @@ export const STUNT = {
 } as const;
 
 const TAU = Math.PI*2, HALF = Math.PI/2;
-const turns = (angle:number) => Math.round(angle/TAU);
+// How close to the normal limit counts as back inside it; damping never quite reaches a target on the limit.
+const SETTLED = .05;
 const damp = (from:number, to:number, rate:number, dt:number) => from+(to-from)*(1-Math.exp(-rate*dt));
 const clamp = (n:number, limit:number) => Math.max(-limit,Math.min(limit,n));
 
@@ -52,6 +53,7 @@ export function steepness(pitch:number) {
 
 export interface Attitude { heading:number; pitch:number; bank:number }
 export interface FlightInput { roll:number; climb:number; hold:Hold; speed:number; bankResponse:number; pitchResponse:number }
+const wrap = (angle:number) => angle-TAU*Math.round(angle/TAU);
 export class Aerobatics {
   /** Camera yaw left over from a reversal; it eases back to zero so the view swings round instead of cutting. */
   view = 0;
@@ -59,59 +61,49 @@ export class Aerobatics {
   stalled = false;
   private rollHold = 0;
   private pitchHold = 0;
-  private bankBase = 0;
-  private pitchBase = 0;
+  // Rotation actually flown since the plane was last inside its normal limits. Re-labelling the attitude never adds to it.
+  private rolled = 0;
+  private looped = 0;
   private reversal = false;
-  reset() { this.view = this.rollHold = this.pitchHold = this.bankBase = this.pitchBase = 0; this.stalled = this.reversal = false; }
+  reset() { this.view = this.rollHold = this.pitchHold = this.rolled = this.looped = 0; this.stalled = this.reversal = false; }
   /** True while the plane is outside its normal attitude limits. */
   active(a:Attitude) {
     const L = STUNT.limits;
-    return !!(this.rollHold || this.pitchHold) || Math.abs(a.bank-this.bankBase) > L.bank+.05 || Math.abs(a.pitch-this.pitchBase) > L.pitch+.05;
+    return !!(this.rollHold || this.pitchHold) || Math.abs(a.bank) > L.bank+SETTLED || Math.abs(a.pitch) > L.pitch+SETTLED;
   }
   /** Advances bank and pitch (and heading on a reversal). Returns the new attitude and the tricks completed this step. */
   step(a:Attitude, input:FlightInput, dt:number): Attitude & {tricks:TrickKind[]} {
     const L = STUNT.limits, tricks:TrickKind[] = [];
     let {heading,pitch,bank} = a;
 
+    // Bank and pitch are kept within half a turn of level, so letting go always settles the nearer way round.
     const rollHold = Math.sign(input.hold.roll);
+    const bankBefore = bank;
     if (rollHold) bank -= rollHold*STUNT.roll.rate*dt;
-    else {
-      // Let go: finish the way round that is nearer, so the plane never unwinds more than half a turn.
-      if (this.rollHold) this.bankBase = turns(bank)*TAU;
-      bank = damp(bank,this.bankBase-input.roll*L.bank,input.bankResponse,dt);
-    }
+    else bank = damp(bank,-input.roll*L.bank,input.bankResponse,dt);
+    this.rolled += bank-bankBefore; bank = wrap(bank);
     this.rollHold = rollHold;
-    const rolls = turns(bank);
-    if (rolls && Math.abs(bank-rolls*TAU) <= L.bank) {
-      for (let i=0;i<Math.abs(rolls);i++) tricks.push('barrelRoll');
-      bank -= rolls*TAU; this.bankBase = rollHold ? 0 : this.bankBase-rolls*TAU;
-    }
+    // A held roll counts at the full turn; one that is let go counts as it comes back inside the normal bank limit.
+    if (Math.abs(this.rolled) >= (rollHold ? TAU : TAU-L.bank-SETTLED)) { tricks.push('barrelRoll'); this.rolled -= Math.sign(this.rolled)*TAU; }
+    if (!rollHold && Math.abs(bank) <= L.bank+SETTLED) this.rolled = 0;
 
     let pitchHold = Math.sign(input.hold.pitch);
     this.stalled = pitchHold > 0 && pitch >= -L.pitch && pitch < HALF && input.speed < STUNT.loop.minSpeed;
     if (this.stalled) pitchHold = 0;
-    if (pitchHold) pitch += pitchHold*STUNT.loop.rate*dt;
-    else {
-      if (this.pitchHold) {
-        const round = Math.abs(pitch), dir = Math.sign(pitch);
-        if (round <= HALF) this.pitchBase = 0;
-        else if (round >= TAU-HALF) this.pitchBase = dir*TAU;
-        else {
-          // Past vertical: the same attitude seen from the opposite heading is upside down, and the normal bank control rolls it upright.
-          this.reversal = dir < 0 && round >= STUNT.splitS.minTurn;
-          heading += Math.PI; pitch = dir*Math.PI-pitch; bank += bank <= this.bankBase ? Math.PI : -Math.PI;
-          this.pitchBase = 0;
-          this.view -= dir*Math.PI;
-        }
-      }
-      pitch = damp(pitch,this.pitchBase+input.climb*L.pitch,input.pitchResponse,dt);
-    }
+    let flown = 0;
+    if (pitchHold) flown = pitchHold*STUNT.loop.rate*dt;
+    else if (this.pitchHold && Math.abs(pitch) > HALF) {
+      // Let go past vertical: the same attitude seen from the opposite heading is upside down, and the normal bank control rolls it upright.
+      this.reversal = this.looped <= -STUNT.splitS.minTurn;
+      this.view -= Math.sign(this.looped)*Math.PI;
+      heading += Math.PI; pitch = Math.sign(pitch)*Math.PI-pitch; bank = wrap(bank+Math.PI);
+      this.looped = 0;
+    } else flown = damp(pitch,input.climb*L.pitch,input.pitchResponse,dt)-pitch;
+    pitch += flown; this.looped += flown;
+    pitch = wrap(pitch);
     this.pitchHold = pitchHold;
-    const loops = turns(pitch);
-    if (loops && Math.abs(pitch-loops*TAU) <= L.pitch) {
-      for (let i=0;i<Math.abs(loops);i++) tricks.push('loop');
-      pitch -= loops*TAU; this.pitchBase = pitchHold ? 0 : this.pitchBase-loops*TAU;
-    }
+    if (Math.abs(this.looped) >= (pitchHold ? TAU : TAU-L.pitch-SETTLED)) { tricks.push('loop'); this.looped -= Math.sign(this.looped)*TAU; }
+    if (!pitchHold && Math.abs(pitch) <= L.pitch+SETTLED) this.looped = 0;
 
     // A split S counts once the plane is upright again on the new heading.
     if (this.reversal && !this.active({heading,pitch,bank})) { tricks.push('splitS'); this.reversal = false; }

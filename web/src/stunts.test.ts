@@ -56,7 +56,7 @@ test('a held pull flies a full loop that closes at its entry height on the same 
   const loop = fly([[turn,{pitch:1}],[1,{}]]);
   a.deepEqual(loop.tricks, ['loop']);
   near(loop.heading,0,1e-9,'heading'); near(loop.pitch,0,.01,'pitch'); near(loop.altitude,0,3,'altitude');
-  near(loop.maxPitch,2*Math.PI-STUNT.limits.pitch,.1,'went all the way round');
+  near(loop.maxPitch,Math.PI,.05,'went over the top');
 });
 
 test('a pull below 35 m/s stalls: the nose stays inside the normal limit and nothing scores', () => {
@@ -86,6 +86,17 @@ test('other half turns reverse the plane without scoring, and a shallow push jus
   const dive = fly([[half*.4,{pitch:-1}],[1.5,{}]]);
   a.deepEqual(dive.tricks, []); near(dive.heading,0,1e-9,'heading'); near(dive.pitch,0,.01,'pulled out');
   a.deepEqual(fly([[half*1.7,{pitch:-1}],[1.5,{}]]).tricks, ['loop'], 'let go in the last quarter: the outside loop finishes');
+});
+
+test('a trick needs a full turn of real rotation: doubling back or re-labelling the attitude adds nothing', () => {
+  const roll = 2*Math.PI/STUNT.roll.rate, loop = 2*Math.PI/STUNT.loop.rate;
+  a.deepEqual(fly([[roll*.9,{roll:1}],[roll*.8,{roll:-1}],[1,{}]]).tricks, [], 'most of a roll and most of the way back');
+  a.deepEqual(fly([[loop*.95,{pitch:1}],[loop*.9,{pitch:-1}],[1.5,{}]]).tricks, [], 'most of a loop and most of the way back');
+  a.deepEqual(fly([[roll*.9,{roll:1}],[roll*.9,{roll:-1}],[roll*.9,{roll:1}],[1,{}]]).tricks, ['barrelRoll'], 'the last pass is let go past halfway, so it finishes');
+  for (const dir of [1,-1]) {
+    const tricks = fly([[loop/2,{pitch:-1}],[DT*2,{}],[roll*.45,{roll:dir}],[1.5,{}]],52).tricks;
+    a.deepEqual(tricks, ['splitS'], 'rolling upright after a reversal is half a roll, not a barrel roll');
+  }
 });
 
 test('turning reverses on the back of a loop and steep flight trades speed for height', () => {
