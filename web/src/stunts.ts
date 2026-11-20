@@ -4,7 +4,8 @@
  */
 export const STUNT = {
   // Device tilt in degrees. 30° is already full normal deflection, so a hold has to go clearly past it.
-  hold: { start:50, release:38 },
+  // A roll needs a deeper tilt than a pull or push: hard turns already lean the device well past 50°.
+  hold: { roll:{ start:65, release:50 }, pitch:{ start:50, release:38 } },
   limits: { bank:.78, pitch:.49 },
   // Rates are radians per second while held: one roll takes 1.2 s, one loop 2.4 s.
   roll: { rate:5.2, points:100 },
@@ -33,11 +34,13 @@ export class HoldDetector {
   reset() { this.axis = null; }
   /** Tilt in degrees from the centred pose. One axis at a time: a hard pull also disturbs the other reading. */
   update(roll:number, pitch:number): Hold {
-    const H = STUNT.hold;
-    if (this.axis && (this.axis === 'roll' ? roll : pitch)*this.sign < H.release) this.axis = null;
-    if (!this.axis && Math.max(Math.abs(roll),Math.abs(pitch)) >= H.start) {
-      this.axis = Math.abs(roll) >= Math.abs(pitch) ? 'roll' : 'pitch';
-      this.sign = Math.sign(this.axis === 'roll' ? roll : pitch);
+    const H = STUNT.hold, tilt = {roll, pitch};
+    if (this.axis && tilt[this.axis]*this.sign < H[this.axis].release) this.axis = null;
+    if (!this.axis) {
+      // How far each axis is past its own threshold; the one further past wins.
+      const past = (axis:'roll'|'pitch') => Math.abs(tilt[axis])/H[axis].start;
+      const axis = past('roll') >= past('pitch') ? 'roll' : 'pitch';
+      if (past(axis) >= 1) { this.axis = axis; this.sign = Math.sign(tilt[axis]); }
     }
     return {roll:this.axis === 'roll' ? this.sign : 0, pitch:this.axis === 'pitch' ? this.sign : 0};
   }

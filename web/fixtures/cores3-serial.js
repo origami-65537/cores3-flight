@@ -1,7 +1,8 @@
 (() => {
   const encoder = new TextEncoder();
   const sim = window.coreS3Sim = { topEdgeUp: 17, rightEdgeDown: -12, buttons: 0, paused: false, legacyFirmware: false, radar: [],
-    // Tilts 60 degrees past the centred pose for a while: 'rollLeft', 'rollRight', 'pull' or 'push'.
+    // Tilts past the centred pose for a while: 75 degrees for 'rollLeft' or 'rollRight', 60 for 'pull' or 'push'.
+    // rightEdgeDown has to be within 15 degrees of zero for a roll, because the device reports at most 90.
     hold(gesture, ms = 1300) {
       sim.active = { at: performance.now(), ms, roll: gesture.startsWith('roll'), sign: gesture === 'rollLeft' || gesture === 'push' ? -1 : 1 };
     } };
@@ -26,7 +27,7 @@
               const now = performance.now();
               const hold = sim.active && now - sim.active.at < sim.active.ms + 150 ? sim.active : null;
               // The hand takes 150 ms to get there and 150 ms to come back.
-              const swing = hold ? 60 * hold.sign * Math.max(0, Math.min(1, (now - hold.at) / 150, (hold.at + hold.ms + 150 - now) / 150)) : 0;
+              const swing = hold ? (hold.roll ? 75 : 60) * hold.sign * Math.max(0, Math.min(1, (now - hold.at) / 150, (hold.at + hold.ms + 150 - now) / 150)) : 0;
               const rUnwrapped = sim.topEdgeUp + (hold && !hold.roll ? swing : 0) + .55 * Math.sin(t * 23) + .6 * Math.sin(t * .7);
               const r = +wrap(rUnwrapped).toFixed(2);
               const p = +Math.max(-90, Math.min(90, sim.rightEdgeDown + (hold && hold.roll ? swing : 0) + .45 * Math.cos(t * 19) + .5 * Math.sin(t * .63))).toFixed(2);

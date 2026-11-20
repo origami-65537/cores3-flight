@@ -157,12 +157,12 @@ test('holding the device past the normal tilt range reports a hold on one axis u
     for (let i = 0; i < 12; i++) await frame(17, -12);
     a.deepEqual(calibrations, [false, true]);
     // Device r is game pitch and device p is game roll, both relative to the centred pose (17, -12).
-    a.deepEqual(await pose(17, 33), undefined, '45 degrees is a hard turn, not a hold');
-    a.deepEqual(await pose(17, 40), {roll:1, pitch:0});
-    a.deepEqual(await pose(75, 40), {roll:1, pitch:0}, 'the other axis is ignored while one is held');
-    a.deepEqual(await pose(17, 28), {roll:1, pitch:0}, 'still held at 40 degrees');
-    a.deepEqual(await pose(17, 24), undefined);
-    a.deepEqual(await pose(17, -64), {roll:-1, pitch:0});
+    a.deepEqual(await pose(17, 48), undefined, '60 degrees is a hard turn, not a hold');
+    a.deepEqual(await pose(17, 55), {roll:1, pitch:0});
+    a.deepEqual(await pose(75, 55), {roll:1, pitch:0}, 'the other axis is ignored while one is held');
+    a.deepEqual(await pose(17, 40), {roll:1, pitch:0}, 'still held at 52 degrees');
+    a.deepEqual(await pose(17, 36), undefined);
+    a.deepEqual(await pose(17, -79), {roll:-1, pitch:0});
     a.deepEqual(await pose(17, -12), undefined);
     a.deepEqual(await pose(69, -12), {roll:0, pitch:1});
     a.deepEqual(await pose(-35, -12), {roll:0, pitch:-1});

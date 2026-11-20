@@ -105,7 +105,7 @@ WebSocket では 1 テキストフレームに 1 個の JSON（改行なし）�
 
 ## スタント（傾けている間だけ回る）
 
-スタントは自動再生ではなく、プレイヤーが回します。得点になるのは実際に回した角度だけで、途中で逆に戻した分は数えません。CoreS3 を通常の操縦範囲（約 30° で最大）より大きく、**50° 以上**傾けている間だけ機体がその向きに回り続け、手を戻す（38° 未満）と止まります。通常のバンク約 45°・ピッチ約 28° の制限は、この入力の間だけ外れます。もう一方の軸の操縦はスタント中も効きます。
+スタントは自動再生ではなく、プレイヤーが回します。得点になるのは実際に回した角度だけで、途中で逆に戻した分は数えません。CoreS3 を通常の操縦範囲（約 30° で最大）よりずっと深く傾けている間だけ機体がその向きに回り続け、手を戻すと止まります。左右のロールは **65° 以上**で始まり 50° 未満で止まります（急旋回で深く傾けてもロールにならないように、引く・押すより深くしています）。引く・押すは **50° 以上**で始まり 38° 未満で止まります。通常のバンク約 45°・ピッチ約 28° の制限は、この入力の間だけ外れます。もう一方の軸の操縦はスタント中も効きます。
 
 | 操作 | キー（押している間） | 動き | 成立 | 点 |
 | --- | --- | --- | --- | --- |
@@ -180,4 +180,4 @@ The UI fonts in `web/public/fonts/` are SIL OFL subsets of Space Grotesk (Latin)
 
 ### Playtest without hardware
 
-On the game page, run the contents of [the mock serial device](web/fixtures/cores3-serial.js) in DevTools before clicking Connect. It streams the firmware's 50 Hz newline JSON with a non-level grip, a short boot delay, and small deterministic noise and drift. After centering, add to `coreS3Sim.rightEdgeDown` to bank right or subtract to bank left; add to `coreS3Sim.topEdgeUp` to pitch up or subtract to pitch down (degrees). Set `coreS3Sim.buttons` to 1 for boost, 2 for center, or 0 to release. Set `coreS3Sim.paused` to test stale input and inspect `coreS3Sim.radar` for the game's telemetry. Call `coreS3Sim.hold('rollLeft')`, `'rollRight'`, `'pull'` or `'push'` (optionally with a duration in ms, default 1300) to tilt 60 degrees past the centred pose for that long, and set `coreS3Sim.legacyFirmware = true` to drop the angular velocity fields like older firmware. Reload to restore normal Web Serial.
+On the game page, run the contents of [the mock serial device](web/fixtures/cores3-serial.js) in DevTools before clicking Connect. It streams the firmware's 50 Hz newline JSON with a non-level grip, a short boot delay, and small deterministic noise and drift. After centering, add to `coreS3Sim.rightEdgeDown` to bank right or subtract to bank left; add to `coreS3Sim.topEdgeUp` to pitch up or subtract to pitch down (degrees). Set `coreS3Sim.buttons` to 1 for boost, 2 for center, or 0 to release. Set `coreS3Sim.paused` to test stale input and inspect `coreS3Sim.radar` for the game's telemetry. Call `coreS3Sim.hold('rollLeft')`, `'rollRight'`, `'pull'` or `'push'` (optionally with a duration in ms, default 1300) to tilt past the centred pose for that long (75 degrees for a roll, 60 for a pull or push), and set `coreS3Sim.legacyFirmware = true` to drop the angular velocity fields like older firmware. Reload to restore normal Web Serial.
