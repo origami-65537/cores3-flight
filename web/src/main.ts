@@ -198,7 +198,8 @@ function animate() {
     if(aero.stalled && !stalledCue)flash(`失速！ ${STUNT.loop.minSpeed} m/s 必要`);
     stalledCue=aero.stalled;
     // Speed comes from height: a dive builds it, levelling out of a long one adds a surge, and a climb spends it.
-    const energy=momentum.step(speed,pitch,minSpeed+throttle*speedRange,coastEffect(position),dt);
+    // A held loop or split S keeps the speed rules of the stunts, so a loop still works from cruise speed.
+    const energy=momentum.step(speed,heldAxis.pitch?0:pitch,minSpeed+throttle*speedRange,coastEffect(position),dt);
     speed=THREE.MathUtils.clamp(energy.speed-STUNT.gravity*steepness(pitch)*dt,minSpeed*.6,AIR.maxSpeed);
     if(energy.pulledOut) {audio.boost(); if(now-lastSurgeCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'boost'});lastSurgeCue=now;}}
     heading+=Math.sin(bank)*turnFactor(pitch)*dt*FEEL.response.turn;

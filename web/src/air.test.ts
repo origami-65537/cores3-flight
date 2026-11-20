@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AIR, Momentum, coastEffect, rush, updraft, wind } from './air';
-import { STUNT } from './stunts';
+import { Aerobatics, STUNT, steepness } from './stunts';
 import { VOLCANO, groundHeight, launch } from './world';
 
 const cruise = 37.2, dt = 1/60;
@@ -41,6 +41,17 @@ test('a steady climb costs speed but never stops the plane, and speed stays unde
   const climb = fly(new Momentum(),cruise,STUNT.limits.pitch,20).speed;
   assert.ok(climb < STUNT.loop.minSpeed && climb > 22);
   assert.ok(fly(new Momentum(),cruise,-STUNT.limits.pitch,60).speed <= AIR.maxSpeed);
+});
+
+test('a loop held from cruise speed still completes', () => {
+  const aero = new Aerobatics(), momentum = new Momentum(), tricks:string[] = [];
+  let attitude = { heading:0, pitch:0, bank:0 }, speed = cruise;
+  for (let t = 0; t < 4; t += dt) {
+    const flown = aero.step(attitude,{ roll:0, climb:0, hold:{ roll:0, pitch:1 }, speed, bankResponse:5, pitchResponse:4 },dt);
+    attitude = flown; tricks.push(...flown.tricks);
+    speed = momentum.step(speed,0,cruise,0,dt).speed-STUNT.gravity*steepness(attitude.pitch)*dt;
+  }
+  assert.deepEqual(tricks, ['loop']);
 });
 
 test('flying low along the coast raises the cruise speed', () => {

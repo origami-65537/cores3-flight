@@ -5,7 +5,7 @@ import { VOLCANO, terrainHeight, type Point } from './world';
 
 export const AIR = {
   // Speed in m/s gained per second of pointing straight down; the normal pitch range reaches about half of that.
-  gravity:15, thrust:.8, drag:.12, maxSpeed:95,
+  gravity:15, thrust:2, drag:.12, maxSpeed:95,
   // Levelling out of a dive that lost at least minDrop metres adds a surge on top of the speed the dive built.
   // Letting go of the controls eases the nose up to level from below, so level starts just under the horizon.
   pullOut: { dive:-.1, level:-.03, minDrop:45, perMetre:.1, max:14, seconds:.5, forget:25 },
