@@ -5,12 +5,12 @@ import { Aerobatics, HoldDetector, STUNT, steepness, turnFactor, type Hold, type
 const DT = 1/60, deg = (n:number) => n*Math.PI/180;
 const none:Hold = {roll:0, pitch:0};
 /** Flies the attitude model through a list of [seconds, hold] phases and reports what happened. */
-function fly(phases:[number,Partial<Hold>][], speed=50, controls={roll:0, climb:0}) {
+function fly(phases:[number,Partial<Hold>,{roll?:number,climb?:number}?][], speed=50, controls={roll:0, climb:0}) {
   const aero = new Aerobatics();
   let attitude = {heading:0, pitch:0, bank:0}, altitude = 0, maxPitch = 0, maxBank = 0, stalled = false;
   const tricks:TrickKind[] = [];
-  for (const [seconds,hold] of phases) for (let t = 0; t < seconds-1e-9; t += DT) {
-    const step = aero.step(attitude,{...controls, hold:{...none,...hold}, speed, bankResponse:12, pitchResponse:9},DT);
+  for (const [seconds,hold,stick] of phases) for (let t = 0; t < seconds-1e-9; t += DT) {
+    const step = aero.step(attitude,{...controls, ...stick, hold:{...none,...hold}, speed, bankResponse:12, pitchResponse:9},DT);
     attitude = step; tricks.push(...step.tricks);
     altitude += Math.sin(attitude.pitch)*speed*DT;
     maxPitch = Math.max(maxPitch,Math.abs(attitude.pitch)); maxBank = Math.max(maxBank,Math.abs(attitude.bank));
@@ -97,6 +97,17 @@ test('a trick needs a full turn of real rotation: doubling back or re-labelling 
     const tricks = fly([[loop/2,{pitch:-1}],[DT*2,{}],[roll*.45,{roll:dir}],[1.5,{}]],52).tricks;
     a.deepEqual(tricks, ['splitS'], 'rolling upright after a reversal is half a roll, not a barrel roll');
   }
+});
+
+test('a turn that starts from a banked or climbing attitude is measured from that attitude', () => {
+  const roll = 2*Math.PI/STUNT.roll.rate, loop = 2*Math.PI/STUNT.loop.rate, right = {roll:1}, left = {roll:-1}, up = {climb:1};
+  a.deepEqual(fly([[1,{},right],[roll*.74,{roll:1},right],[1,{},right]]).tricks, ['barrelRoll'], 'from a right bank all the way round to the same right bank');
+  a.deepEqual(fly([[1,{},right],[roll*.74,{roll:1},right],[1,{},left]]).tricks, [], 'from a right bank to a left bank is three quarters of a turn');
+  a.deepEqual(fly([[1,{},up],[loop*.8,{pitch:1},up],[1,{},up]]).tricks, ['loop']);
+  const shallow = fly([[1,{},up],[deg(140)/STUNT.loop.rate,{pitch:-1},up],[1.5,{}]]);
+  a.deepEqual(shallow.tricks, [], 'pushed 140 degrees from a climb: the nose is only 112 degrees below level');
+  near(shallow.heading,Math.PI,1e-9,'it still reverses');
+  a.deepEqual(fly([[deg(140)/STUNT.loop.rate,{pitch:-1}],[1.5,{}]]).tricks, ['splitS']);
 });
 
 test('turning reverses on the back of a loop and steep flight trades speed for height', () => {

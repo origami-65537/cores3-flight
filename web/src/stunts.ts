@@ -18,6 +18,8 @@ export const STUNT = {
 const TAU = Math.PI*2, HALF = Math.PI/2;
 // How close to the normal limit counts as back inside it; damping never quite reaches a target on the limit.
 const SETTLED = .05;
+// A turn that is let go may end this far short of the attitude it started from and still count.
+const FULL_TURN_SLACK = .26;
 const damp = (from:number, to:number, rate:number, dt:number) => from+(to-from)*(1-Math.exp(-rate*dt));
 const clamp = (n:number, limit:number) => Math.max(-limit,Math.min(limit,n));
 
@@ -79,31 +81,37 @@ export class Aerobatics {
     // Bank and pitch are kept within half a turn of level, so letting go always settles the nearer way round.
     const rollHold = Math.sign(input.hold.roll);
     const bankBefore = bank;
+    const bankTarget = -input.roll*L.bank;
     if (rollHold) bank -= rollHold*STUNT.roll.rate*dt;
-    else bank = damp(bank,-input.roll*L.bank,input.bankResponse,dt);
+    else bank = damp(bank,bankTarget,input.bankResponse,dt);
     this.rolled += bank-bankBefore; bank = wrap(bank);
     this.rollHold = rollHold;
-    // A held roll counts at the full turn; one that is let go counts as it comes back inside the normal bank limit.
-    if (Math.abs(this.rolled) >= (rollHold ? TAU : TAU-L.bank-SETTLED)) { tricks.push('barrelRoll'); this.rolled -= Math.sign(this.rolled)*TAU; }
-    if (!rollHold && Math.abs(bank) <= L.bank+SETTLED) this.rolled = 0;
+    // A held roll counts at the full turn. One that is let go counts as it comes back inside the normal bank limit,
+    // if the bank it is settling to completes the turn.
+    const settledBank = !rollHold && Math.abs(bank) <= L.bank+SETTLED;
+    if (Math.abs(settledBank ? this.rolled+bankTarget-bank : this.rolled) >= (rollHold ? TAU : TAU-FULL_TURN_SLACK)) { tricks.push('barrelRoll'); this.rolled -= Math.sign(this.rolled)*TAU; }
+    if (settledBank) this.rolled = 0;
 
     let pitchHold = Math.sign(input.hold.pitch);
     this.stalled = pitchHold > 0 && pitch >= -L.pitch && pitch < HALF && input.speed < STUNT.loop.minSpeed;
     if (this.stalled) pitchHold = 0;
+    const pitchTarget = input.climb*L.pitch;
     let flown = 0;
     if (pitchHold) flown = pitchHold*STUNT.loop.rate*dt;
     else if (this.pitchHold && Math.abs(pitch) > HALF) {
       // Let go past vertical: the same attitude seen from the opposite heading is upside down, and the normal bank control rolls it upright.
-      this.reversal = this.looped <= -STUNT.splitS.minTurn;
+      // A split S needs the nose pushed at least minTurn below level, however the push started.
+      this.reversal = this.looped < 0 && (pitch < 0 ? -pitch : TAU-pitch) >= STUNT.splitS.minTurn;
       this.view -= Math.sign(this.looped)*Math.PI;
       heading += Math.PI; pitch = Math.sign(pitch)*Math.PI-pitch; bank = wrap(bank+Math.PI);
       this.looped = 0;
-    } else flown = damp(pitch,input.climb*L.pitch,input.pitchResponse,dt)-pitch;
+    } else flown = damp(pitch,pitchTarget,input.pitchResponse,dt)-pitch;
     pitch += flown; this.looped += flown;
     pitch = wrap(pitch);
     this.pitchHold = pitchHold;
-    if (Math.abs(this.looped) >= (pitchHold ? TAU : TAU-L.pitch-SETTLED)) { tricks.push('loop'); this.looped -= Math.sign(this.looped)*TAU; }
-    if (!pitchHold && Math.abs(pitch) <= L.pitch+SETTLED) this.looped = 0;
+    const settledPitch = !pitchHold && Math.abs(pitch) <= L.pitch+SETTLED;
+    if (Math.abs(settledPitch ? this.looped+pitchTarget-pitch : this.looped) >= (pitchHold ? TAU : TAU-FULL_TURN_SLACK)) { tricks.push('loop'); this.looped -= Math.sign(this.looped)*TAU; }
+    if (settledPitch) this.looped = 0;
 
     // A split S counts once the plane is upright again on the new heading.
     if (this.reversal && !this.active({heading,pitch,bank})) { tricks.push('splitS'); this.reversal = false; }
