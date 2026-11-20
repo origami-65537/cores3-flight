@@ -1,10 +1,11 @@
 import * as THREE from 'three';
 import { Keyboard, CoreS3, wifiTarget } from './input';
-import { CEILING, groundHeight, landmarks, launch, mist, nearStructure, pathHits, terrainHeight, throughGate, touching, wrap } from './world';
+import { CEILING, groundHeight, landmarks, launch, mist, nearStructure, pathHits, overSea, terrainHeight, throughGate, touching, wrap } from './world';
 import { Island } from './island';
 import { buildAircraft } from './aircraft';
 import { RenderQuality } from './render-quality';
-import { FEEL, fovFromSpeed, nearMiss } from './feel';
+import { SeaSpray } from './spray';
+import { FEEL, fovFromSpeed, nearMiss, skimDepth, skimPoints } from './feel';
 import { FlightAudio } from './audio';
 import { Aerobatics, STUNT, TRICK_NAMES, steepness, trickPoints, turnFactor, type TrickKind } from './stunts';
 import './style.css';
@@ -44,6 +45,7 @@ resizeRenderer();
 window.addEventListener('resize',resizeRenderer);
 document.addEventListener('visibilitychange',() => quality.resetSample());
 const island = new Island(scene);
+const spray = new SeaSpray(scene);
 const linePositions=new Float32Array(FEEL.speedLines.count*6);
 for(let i=0;i<FEEL.speedLines.count;i++) {
   const angle=i*2.39996,r=9+i%8,z=-20-i%6*5;
@@ -66,6 +68,7 @@ function reward() {
   if(found.size===landmarks.length && !fanfare) {fanfare=true; for(const step of [1,2,3])setTimeout(()=>audio.chime(found.size+step*2),step*140);}
   timeOfDay++;
 }
+let skimBank=0;
 const {model:plane, updatePropeller}=buildAircraft();
 scene.add(plane);
 const keyboard = new Keyboard(), device = new CoreS3();
@@ -120,17 +123,19 @@ device.onHangar=down=>{
   else parked=false;
 };
 function resetFlight() {
+  spray.reset();
   position.set(launch.x,launch.y,launch.z);
   heading=launch.heading; pitch=bank=score=elapsed=timeOfDay=0; found.clear(); armed.fill(true); fanfare=false; aero.reset(); stalledCue=false; trickCounts.barrelRoll=trickCounts.loop=trickCounts.splitS=0;
   speed=cruiseSpeed; throttle=cruiseThrottle; ended=false; noticeUntil=0;
   hitstopUntil=0; wasBoosting=false; wasLow=false; skimmedGround=skimmedStructure=false; boostMix=0; lastWhoosh=lastCue=lastBoostCue=-Infinity;
-  rewardAge=Infinity; particles.visible=false;
+  rewardAge=Infinity; particles.visible=false; skimBank=0;
   camera.position.set(launch.x,launch.y+8,launch.z+27);
   el('crash-flash').classList.remove('active');
 }
 function reset() {resetFlight(); takeoff();}
 function formatTime() {return `${Math.floor(elapsed/60).toString().padStart(2,'0')}:${Math.floor(elapsed%60).toString().padStart(2,'0')}`;}
 function finish(cause:'ground'|'structure') {
+  spray.reset();
   ended=true;
   const sea=cause==='ground' && terrainHeight(position.x,position.z)<0;
   const title=sea?'海に着水 / You hit the water':cause==='ground'?'地面に衝突 / You hit the ground':'障害物に衝突 / You hit an obstacle';
@@ -262,7 +267,12 @@ function animate() {
   const height=position.y-groundHeight(position.x,position.z)-FEEL.clearance;
   // Warn only when the path ahead really ends in something, so a clean pass under a bridge stays quiet.
   const danger=flying && pathHits(position,forward,speed*FEEL.lookAheadSeconds,FEEL.clearance);
-  const low=danger==='ground';
+  // Skimming the sea: points build up the lower the plane flies, and the last stretch above the water warns.
+  const skim=flying && overSea(position.x,position.z)?skimDepth(height):0;
+  skimBank+=skimPoints(skim)*dt; score+=Math.floor(skimBank); skimBank%=1;
+  audio.skim(skim);
+  spray.update(dt,skim,position,forward,speed,viewHeight*renderRatio);
+  const low=danger==='ground' || (skim>0 && height<FEEL.skim.warn && !danger);
   if(flying && low && !wasLow && now-lastCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'pullup'}); lastCue=now;}
   wasLow=flying && low;
   const close=flying && nearStructure(position,FEEL.nearMiss.structure);
@@ -271,7 +281,7 @@ function animate() {
   if(!flying || groundPass)skimmedGround=false;
   skimmedStructure=close;
   if(flying && now-lastWhoosh>FEEL.nearMiss.cooldownMs && (groundPass || structurePass)) {audio.whoosh();lastWhoosh=now;}
-  warning.hidden=!flying || !danger;
+  warning.hidden=!flying || !(danger || low);
   showText(warning,low?'PULL UP':'OBSTACLE');
   radarTimer+=dt; if(radarTimer>=.1) {radarTimer=0;device.send({t:'radar',h:THREE.MathUtils.radToDeg(heading),range:FEEL.radarRange,o:landmarks.map(({gate})=>[Math.round(gate.x-position.x),Math.round(gate.z-position.z)]),score,speed:Math.round(airspeed),alt:Math.round(position.y)});}
   renderer.render(scene,camera);
