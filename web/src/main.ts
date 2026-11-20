@@ -4,6 +4,7 @@ import { CEILING, groundHeight, landmarks, launch, mist, nearStructure, pathHits
 import { Island } from './island';
 import { buildAircraft } from './aircraft';
 import { RenderQuality } from './render-quality';
+import { SeaSpray } from './spray';
 import { FEEL, fovFromSpeed, nearMiss, skimDepth, skimPoints } from './feel';
 import { FlightAudio } from './audio';
 import { Aerobatics, STUNT, TRICK_NAMES, steepness, trickPoints, turnFactor, type TrickKind } from './stunts';
@@ -44,6 +45,7 @@ resizeRenderer();
 window.addEventListener('resize',resizeRenderer);
 document.addEventListener('visibilitychange',() => quality.resetSample());
 const island = new Island(scene);
+const spray = new SeaSpray(scene);
 const linePositions=new Float32Array(FEEL.speedLines.count*6);
 for(let i=0;i<FEEL.speedLines.count;i++) {
   const angle=i*2.39996,r=9+i%8,z=-20-i%6*5;
@@ -121,6 +123,7 @@ device.onHangar=down=>{
   else parked=false;
 };
 function resetFlight() {
+  spray.reset();
   position.set(launch.x,launch.y,launch.z);
   heading=launch.heading; pitch=bank=score=elapsed=timeOfDay=0; found.clear(); armed.fill(true); fanfare=false; aero.reset(); stalledCue=false; trickCounts.barrelRoll=trickCounts.loop=trickCounts.splitS=0;
   speed=cruiseSpeed; throttle=cruiseThrottle; ended=false; noticeUntil=0;
@@ -132,6 +135,7 @@ function resetFlight() {
 function reset() {resetFlight(); takeoff();}
 function formatTime() {return `${Math.floor(elapsed/60).toString().padStart(2,'0')}:${Math.floor(elapsed%60).toString().padStart(2,'0')}`;}
 function finish(cause:'ground'|'structure') {
+  spray.reset();
   ended=true;
   const sea=cause==='ground' && terrainHeight(position.x,position.z)<0;
   const title=sea?'海に着水 / You hit the water':cause==='ground'?'地面に衝突 / You hit the ground':'障害物に衝突 / You hit an obstacle';
@@ -267,6 +271,7 @@ function animate() {
   const skim=flying && overSea(position.x,position.z)?skimDepth(height):0;
   skimBank+=skimPoints(skim)*dt; score+=Math.floor(skimBank); skimBank%=1;
   audio.skim(skim);
+  spray.update(dt,skim,position,forward,speed,viewHeight*renderRatio);
   const low=danger==='ground' || (skim>0 && height<FEEL.skim.warn && !danger);
   if(flying && low && !wasLow && now-lastCue>FEEL.deviceCueCooldownMs) {device.send({t:'sfx',s:'pullup'}); lastCue=now;}
   wasLow=flying && low;
