@@ -20,16 +20,30 @@ function fly(phases:[number,Partial<Hold>,{roll?:number,climb?:number}?][], spee
 }
 const near = (actual:number, expected:number, tolerance:number, label:string) => a.ok(Math.abs(actual-expected) <= tolerance, `${label}: ${actual} vs ${expected}`);
 
-test('a hold starts at 50 degrees, ends below 38 and follows one axis at a time', () => {
+test('a roll hold starts at 65 degrees and ends below 50; a pull or push starts at 50 and ends below 38; one axis at a time', () => {
   const holds = new HoldDetector();
-  a.deepEqual(holds.update(45,0), none);
-  a.deepEqual(holds.update(50,0), {roll:1, pitch:0});
-  a.deepEqual(holds.update(40,70), {roll:1, pitch:0});
-  a.deepEqual(holds.update(37,10), none);
+  a.deepEqual(holds.update(60,0), none, 'a hard turn is not a roll');
+  a.deepEqual(holds.update(65,0), {roll:1, pitch:0});
+  a.deepEqual(holds.update(52,70), {roll:1, pitch:0});
+  a.deepEqual(holds.update(49,10), none);
+  a.deepEqual(holds.update(0,-45), none);
   a.deepEqual(holds.update(0,-55), {roll:0, pitch:-1});
+  a.deepEqual(holds.update(0,-40), {roll:0, pitch:-1});
+  a.deepEqual(holds.update(0,-37), none);
   a.deepEqual(holds.update(0,55), {roll:0, pitch:1});
   holds.reset();
-  a.deepEqual(holds.update(-60,20), {roll:-1, pitch:0});
+  a.deepEqual(holds.update(-70,20), {roll:-1, pitch:0});
+  holds.reset();
+  a.deepEqual(holds.update(48,0,60), none, 'centred 30 degrees off level: only 60 degrees of roll are left on that side');
+  a.deepEqual(holds.update(52,0,60), {roll:1, pitch:0}, 'so the roll starts 10 degrees short of what the device can report');
+  a.deepEqual(holds.update(36,0,60), {roll:1, pitch:0});
+  a.deepEqual(holds.update(34,0,60), none);
+  a.deepEqual(holds.update(30,0,35), none, 'centred 55 degrees off level: the threshold stops at 45 so a normal turn never rolls');
+  a.deepEqual(holds.update(35,0,35), none);
+  holds.reset();
+  a.deepEqual(holds.update(60,52), {roll:0, pitch:1}, 'only the pull is past its threshold');
+  holds.reset();
+  a.deepEqual(holds.update(80,55), {roll:1, pitch:0}, 'both are past: the roll is further past its own threshold');
 });
 
 test('without a hold the plane keeps its normal 45 degree bank and 28 degree pitch limits', () => {

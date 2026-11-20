@@ -209,7 +209,7 @@ export class CoreS3 implements InputSource {
     const {roll,pitch} = this.flightTilt();
     this.filtered.pitch += (axis(pitch)-this.filtered.pitch)*blend;
     this.filtered.roll += (axis(roll)-this.filtered.roll)*blend;
-    const hold = this.holds.update(roll,pitch);
+    const hold = this.holds.update(roll,pitch,90-Math.sign(roll)*this.center.p);
     return hold.roll || hold.pitch ? {...this.filtered,hold} : {...this.filtered};
   }
   send(data:unknown) {

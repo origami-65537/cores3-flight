@@ -102,7 +102,7 @@ setInterval(()=>{
   if(!showStunts)return;
   const t=device.telemetry(), h=STUNT.hold, sign=(n:number)=>`${n<0?'-':'+'}${Math.abs(n).toFixed(0).padStart(3)}`, degrees=(n:number)=>sign(n*180/Math.PI);
   const held=heldAxis.roll?`HOLD ROLL ${heldAxis.roll<0?'←':'→'}`:heldAxis.pitch?`HOLD ${heldAxis.pitch>0?'PULL':'PUSH'}`:aero.stalled?`STALL · ${STUNT.loop.minSpeed} m/s 必要`:'—';
-  showText(panel,[`STUNT DEBUG · G`,!device.connected?'CoreS3 未接続 · keys J L I K':!t.hz?'NO IMU DATA':`tilt roll ${sign(t.roll)}°  pitch ${sign(t.pitch)}°`,`hold ≥${h.start}° · release <${h.release}°`,`input ${held}`,`plane bank ${degrees(bank)}°  pitch ${degrees(pitch)}°`,`count roll ${trickCounts.barrelRoll} loop ${trickCounts.loop} split S ${trickCounts.splitS}`].join('\n'));
+  showText(panel,[`STUNT DEBUG · G`,!device.connected?'CoreS3 未接続 · keys J L I K':!t.hz?'NO IMU DATA':`tilt roll ${sign(t.roll)}°  pitch ${sign(t.pitch)}°`,`hold roll ≥${h.roll.start}° <${h.roll.release}° · pitch ≥${h.pitch.start}° <${h.pitch.release}°`,`input ${held}`,`plane bank ${degrees(bank)}°  pitch ${degrees(pitch)}°`,`count roll ${trickCounts.barrelRoll} loop ${trickCounts.loop} split S ${trickCounts.splitS}`].join('\n'));
 },100);
 setInterval(()=>{const t=device.telemetry(); el('imu').textContent=device.connected?(t.hz?`傾き R${t.roll.toFixed(0)}° P${t.pitch.toFixed(0)}° · ${t.hz}Hz`:'姿勢データなし / No IMU data'):'';},250);
 device.onCalibration=ready=>flash(ready?'センター設定':'姿勢をキープ');
