@@ -5,7 +5,7 @@ import { HoldDetector, type Hold } from './stunts';
 export interface Controls { pitch: number; roll: number; yaw?: number; throttle: number; boost: boolean; hold?: Hold }
 export interface InputSource { sample(dt: number): Controls }
 export const neutral = (): Controls => ({pitch:0, roll:0, throttle:0, boost:false});
-/** gx, gy and gz are angular velocity in degrees per second; older firmware omits them and the game does not use them. */
+/** gx, gy and gz are angular velocity in degrees per second; older firmware omits them. */
 export interface Imu { t: 'imu'; r: number; p: number; y: number; b: number; gx?: number; gy?: number; gz?: number }
 export function parseImu(line: string): Imu | null {
   try {
@@ -41,6 +41,10 @@ export class Keyboard implements InputSource {
 interface Port { readable: ReadableStream<Uint8Array> | null; writable: WritableStream<Uint8Array> | null; open(o:{baudRate:number}):Promise<void>; close():Promise<void> }
 const IMU_TIMEOUT_MS = 500;
 const CENTER_WINDOW_MS = 180;
+const HANGAR_FRAME_GAP_MS = 120;
+const PARK_MS = 400, PICKUP_MS = 200;
+const FACE_DOWN = -Math.cos(20*Math.PI/180), FACE_UP = Math.cos(45*Math.PI/180);
+const PICKUP_TILT_DEG = 70, PICKUP_MOTION_MS = 2000;
 const relativeRoll = (roll:number, center:number) => ((roll-center+180)%360+360)%360-180;
 export class CoreS3 implements InputSource {
   private port?: Port;
@@ -48,37 +52,85 @@ export class CoreS3 implements InputSource {
   private socket?: WebSocket;
   private imu: Imu = {t:'imu',r:0,p:0,y:0,b:0};
   private center = {r:0,p:0};
-  private centering?: { started:number; anchor:number; r:number; p:number; count:number };
+  private centering?: { started:number; anchor:number; r:number; p:number; count:number; notify:boolean };
   private filtered = neutral();
   private last?: number;
   private busy = false;
   private frames: number[] = [];
   private holds = new HoldDetector();
+  private hangarParked = false;
+  private poseSince?: number;
+  private pickup = {x:0,y:0,lastMotion:-Infinity};
   connected = false;
   onStatus: (s:string) => void = () => {};
   onCalibration: (ready:boolean) => void = () => {};
+  onHangar: (parked:boolean) => void = () => {};
   calibrate() {
     const now = performance.now();
-    if (!this.connected || this.last === undefined || now-this.last > IMU_TIMEOUT_MS) return false;
+    if (!this.connected || this.hangarParked || this.last === undefined || now-this.last > IMU_TIMEOUT_MS) return false;
     this.startCentering(now);
     return true;
   }
-  private startCentering(now:number) {
-    this.centering = {started:now,anchor:this.imu.r,r:0,p:0,count:0};
+  private startCentering(now:number,notify=true) {
+    this.centering = {started:now,anchor:this.imu.r,r:0,p:0,count:0,notify};
     this.filtered = neutral(); this.holds.reset();
-    this.onCalibration(false);
+    if (notify) this.onCalibration(false);
+  }
+  private updateHangar(msg:Imu, now:number, gap:number) {
+    const continuous = gap <= HANGAR_FRAME_GAP_MS;
+    if (!continuous) this.poseSince = undefined;
+    if (this.hangarParked) {
+      if (!continuous || now-this.pickup.lastMotion > PICKUP_MOTION_MS) this.pickup = {x:0,y:0,lastMotion:-Infinity};
+      const {gx=0,gy=0} = msg;
+      if (continuous && Math.hypot(gx,gy) >= 8) {
+        this.pickup.x += gx*gap/1000;
+        this.pickup.y += gy*gap/1000;
+        this.pickup.lastMotion = now;
+      }
+    }
+    // The screen normal uses uncentered device angles; cos(r) is continuous across ±180°.
+    const normal = Math.cos(msg.r*Math.PI/180)*Math.cos(msg.p*Math.PI/180);
+    // A stationary face-down CoreS3 can report r near zero when the firmware filter averages ±180°.
+    const target = this.hangarParked
+      ? normal >= FACE_UP && Math.hypot(this.pickup.x,this.pickup.y) >= PICKUP_TILT_DEG
+      : msg.gx !== undefined && normal <= FACE_DOWN;
+    if (!target) {
+      this.poseSince = undefined;
+      return;
+    }
+    this.poseSince ??= now;
+    if (now-this.poseSince >= (this.hangarParked ? PICKUP_MS : PARK_MS)) {
+      this.hangarParked = !this.hangarParked;
+      this.poseSince = undefined;
+      this.pickup = {x:0,y:0,lastMotion:-Infinity};
+    }
   }
   private receive(line:string) {
     const msg = parseImu(line);
     if (!msg) return;
     const now = performance.now();
     const first = this.last === undefined;
+    const gap = now-(this.last ?? -Infinity);
     const recenter = (msg.b & 2) && !(this.imu.b & 2);
-    const interrupted = this.last !== undefined && now-this.last > IMU_TIMEOUT_MS;
+    const interrupted = !first && gap > IMU_TIMEOUT_MS;
     this.imu = msg; this.last = now;
     this.frames.push(now); while (this.frames.length && now-this.frames[0] > 1000) this.frames.shift();
+    if (first) this.hangarParked = false;
+    const wasParked = this.hangarParked;
+    this.updateHangar(msg,now,gap);
+    if (this.hangarParked) {
+      if (!wasParked) {
+        this.centering = undefined; this.filtered = neutral(); this.holds.reset();
+        this.onHangar(true);
+      }
+      return;
+    }
     if (interrupted) { this.filtered = neutral(); this.holds.reset(); }
-    if (first || recenter || (interrupted && this.centering)) this.startCentering(now);
+    if (wasParked) {
+      this.startCentering(now,false);
+      this.onHangar(false);
+    } else if (first || recenter) this.startCentering(now);
+    else if (interrupted && this.centering) this.startCentering(now,this.centering.notify);
     const capture = this.centering;
     if (capture) {
       capture.r += relativeRoll(msg.r,capture.anchor);
@@ -87,7 +139,7 @@ export class CoreS3 implements InputSource {
       if (capture.count > 1 && now-capture.started >= CENTER_WINDOW_MS) {
         this.center = {r:capture.anchor+capture.r/capture.count,p:capture.p/capture.count};
         this.centering = undefined;
-        this.onCalibration(true);
+        if (capture.notify) this.onCalibration(true);
       }
     }
   }
@@ -151,7 +203,7 @@ export class CoreS3 implements InputSource {
     return {hz: live ? this.frames.filter(t => now-t <= 1000).length : 0, ...this.flightTilt()};
   }
   sample(dt:number): Controls {
-    if (!this.connected || this.last === undefined || performance.now()-this.last > IMU_TIMEOUT_MS) return neutral();
+    if (!this.connected || this.hangarParked || this.last === undefined || performance.now()-this.last > IMU_TIMEOUT_MS) return neutral();
     const boost = !!(this.imu.b&1);
     if (this.centering) return {...neutral(),boost};
     const blend = 1-Math.exp(-dt*FEEL.response.device);
