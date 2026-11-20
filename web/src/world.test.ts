@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { CEILING, MIST, gateDirection, groundHeight, landmarks, launch, mist, terrainHeight, throughGate, touching, wrap, type Gate } from './world';
+import { CEILING, GRID, MIST, gateDirection, groundHeight, landmarks, launch, mist, terrainHeight, throughGate, touching, wrap, type Gate } from './world';
 
 const at = (gate: Gate, along: number, side = 0, up = 0) => {
   const d = gateDirection(gate);
@@ -61,4 +61,19 @@ test('flying out into the mist brings the plane back from the other side', () =>
   assert.ok(back.x < 0 && back.z < 0);
   assert.equal(wrap(back.x, back.z), null);
   assert.equal(mist(back.x, back.z) > .8, true);
+});
+
+test('the ground the plane hits is the drawn surface, not the smooth height under it', () => {
+  const { x0, z0, step } = GRID;
+  for (const [column, row] of [[133, 94], [140, 110], [60, 150], [250, 139]]) {
+    const x = x0+column*step, z = z0+row*step, corners = [terrainHeight(x, z), terrainHeight(x+step, z), terrainHeight(x, z+step), terrainHeight(x+step, z+step)];
+    if (Math.min(...corners) <= 0) continue;
+    assert.ok(Math.abs(groundHeight(x+.001, z+.001)-corners[0]) < .1);
+    assert.ok(Math.abs(groundHeight(x+step/2, z+step/2)-(corners[1]+corners[2])/2) < 1e-6);
+    assert.ok(Math.abs(groundHeight(x+step-.001, z+step-.001)-corners[3]) < .1);
+  }
+  const rim = { x: -98, z: -466 }, drawn = groundHeight(rim.x, rim.z);
+  assert.ok(terrainHeight(rim.x, rim.z)-drawn > 5);
+  assert.equal(touching({ ...rim, y: drawn+3 }, 2), null);
+  assert.equal(touching({ ...rim, y: drawn+1 }, 2), 'ground');
 });

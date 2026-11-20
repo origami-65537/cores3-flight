@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import { FEEL } from './feel';
-import { BRIDGE, TOWN, VOLCANO, nearStructure, solids, terrainHeight, type Look, type Solid } from './world';
+import { BRIDGE, GRID, TOWN, VOLCANO, nearStructure, solids, surfaceHeight, terrainHeight, type Look, type Solid } from './world';
 
-const EXTENT = { x0: -1700, x1: 1900, z0: -1600, z1: 1700, step: 12 };
 const SKY = { clearNear: 700, clearFar: 5200, mistNear: 15, mistFar: 170, seconds: 2.5 };
 // Each fly-through moves the island on to the next time of day.
 const TIMES = [
@@ -19,7 +18,7 @@ const volcanoDistance = (x: number, z: number) => Math.hypot(x-VOLCANO.x, z-VOLC
 const ramp = (from: number, to: number, n: number) => Math.max(0, Math.min(1, (n-from)/(to-from)));
 
 function terrain() {
-  const { x0, x1, z0, z1, step } = EXTENT, columns = Math.round((x1-x0)/step), rows = Math.round((z1-z0)/step);
+  const { x0, x1, z0, z1, step } = GRID, columns = Math.round((x1-x0)/step), rows = Math.round((z1-z0)/step);
   const positions = new Float32Array((columns+1)*(rows+1)*3), colors = new Float32Array(positions.length), index = new Uint32Array(columns*rows*6);
   const sand = new THREE.Color('#e4d6a4'), meadow = new THREE.Color('#77ad6c'), upland = new THREE.Color('#4f8a68'), cliff = new THREE.Color('#8c8a7c'), basalt = new THREE.Color('#514843'), color = new THREE.Color();
   for (let row = 0, at = 0; row <= rows; row++) for (let column = 0; column <= columns; column++, at += 3) {
@@ -116,12 +115,12 @@ export class Island {
     }
     add(new THREE.CircleGeometry(VOLCANO.floorRadius+8, 24).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({ color: 0xff7a33 }), VOLCANO.x, VOLCANO.floor+.8, VOLCANO.z);
     this.scatter('trees', new THREE.ConeGeometry(1, 1, 5), new THREE.MeshStandardMaterial({ color: 0x3f7a5c, flatShading: true }), i => {
-      const x = -1350+3100*random(i, 2), z = -1350+2750*random(i, 3), h = terrainHeight(x, z), size = 4+6*random(i, 4);
+      const x = -1350+3100*random(i, 2), z = -1350+2750*random(i, 3), h = surfaceHeight(x, z), size = 4+6*random(i, 4);
       if (h < 9 || h > 150 || slopeAt(x, z) > .6 || Math.hypot(x-TOWN.x, z-TOWN.z) < TOWN.radius || nearStructure({ x, y: h+size, z }, size+8)) return null;
       return [x, h+size, z, size, size*2];
     });
     this.scatter('rocks', new THREE.IcosahedronGeometry(1, 0), new THREE.MeshStandardMaterial({ color: 0x8f8a78, flatShading: true }), i => {
-      const x = -1450+3300*random(i, 5), z = -1450+3000*random(i, 6), h = terrainHeight(x, z), size = 2+5*random(i, 7);
+      const x = -1450+3300*random(i, 5), z = -1450+3000*random(i, 6), h = surfaceHeight(x, z), size = 2+5*random(i, 7);
       if (h < -5 || (h > 8 && slopeAt(x, z) < .6) || nearStructure({ x, y: Math.max(0, h), z }, size+20)) return null;
       return [x, Math.max(0, h)+size*.2, z, size, size*.7];
     });

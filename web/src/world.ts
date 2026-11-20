@@ -56,7 +56,19 @@ export function terrainHeight(x: number, z: number): number {
   const islet = Math.hypot(x-ISLET.x, z-ISLET.z)/ISLET.r;
   return Math.max(h, islet < 1 ? ISLET.h*(1-islet*islet) : Math.max(-30, (1-islet)*ISLET.r*.12));
 }
-export const groundHeight = (x: number, z: number) => Math.max(0, terrainHeight(x, z));
+/** The grid the land is drawn on: `terrainHeight` at each vertex, two flat triangles per cell. */
+export const GRID = { x0: -1700, x1: 1900, z0: -1600, z1: 1700, step: 12 };
+/** Height of the drawn land surface, so what the plane hits is what the player sees. */
+export function surfaceHeight(x: number, z: number): number {
+  const { x0, x1, z0, z1, step } = GRID;
+  if (x <= x0 || x >= x1 || z <= z0 || z >= z1) return terrainHeight(x, z);
+  const column = Math.floor((x-x0)/step), row = Math.floor((z-z0)/step), left = x0+column*step, near = z0+row*step, u = (x-left)/step, v = (z-near)/step;
+  const side = terrainHeight(left+step, near), far = terrainHeight(left, near+step);
+  if (u+v <= 1) { const corner = terrainHeight(left, near); return corner+u*(side-corner)+v*(far-corner); }
+  const corner = terrainHeight(left+step, near+step);
+  return corner+(1-u)*(far-corner)+(1-v)*(side-corner);
+}
+export const groundHeight = (x: number, z: number) => Math.max(0, surfaceHeight(x, z));
 
 function build(): Landmark[] {
   const cape = coast(CAPE.angle), capeX = Math.cos(CAPE.angle), capeZ = Math.sin(CAPE.angle);
