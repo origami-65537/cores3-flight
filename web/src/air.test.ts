@@ -25,6 +25,13 @@ test('a dive builds speed, pulling out adds a surge, and the speed is carried in
   assert.ok(later.speed > cruise+12 && later.speed < out.speed);
 });
 
+test('letting the nose ease back to level after a dive gives the surge too', () => {
+  const momentum = new Momentum(), dive = fly(momentum,cruise,-STUNT.limits.pitch,4);
+  let speed = dive.speed, pitch = -STUNT.limits.pitch, pulledOut = false;
+  for (let t = 0; t < 2; t += dt) { pitch -= pitch*(1-Math.exp(-4*dt)); const next = momentum.step(speed,pitch,cruise,0,dt); speed = next.speed; pulledOut ||= next.pulledOut; }
+  assert.ok(pitch < 0 && pulledOut);
+});
+
 test('a shallow dip gives no surge', () => {
   const momentum = new Momentum(), dip = fly(momentum,cruise,-.2,2);
   assert.equal(fly(momentum,dip.speed,.05,1).pulledOut, false);

@@ -7,7 +7,8 @@ export const AIR = {
   // Speed in m/s gained per second of pointing straight down; the normal pitch range reaches about half of that.
   gravity:15, thrust:.8, drag:.12, maxSpeed:95,
   // Levelling out of a dive that lost at least minDrop metres adds a surge on top of the speed the dive built.
-  pullOut: { dive:-.1, minDrop:45, perMetre:.1, max:14, seconds:.5, forget:25 },
+  // Letting go of the controls eases the nose up to level from below, so level starts just under the horizon.
+  pullOut: { dive:-.1, level:-.03, minDrop:45, perMetre:.1, max:14, seconds:.5, forget:25 },
   // x, z is the unit direction the wind blows toward. It is weak close to the surface and behind higher ground.
   wind: { x:.8, z:-.6, speed:8, surface:.2, heights:[8,110], gust:.25, shelter:.75, upwind:[120,260], cover:50 },
   // Air rises over slopes, most on the side facing the wind, and fades out with height above the ground.
@@ -69,7 +70,7 @@ export class Momentum {
     speed += (-AIR.gravity*clamp(vertical,-limit,limit)+(goal-speed)*pull)*dt;
     let pulledOut = false;
     if (vertical < P.dive) this.drop -= vertical*speed*dt;
-    else if (vertical < 0) this.drop = Math.max(0,this.drop-P.forget*dt);
+    else if (vertical < P.level) this.drop = Math.max(0,this.drop-P.forget*dt);
     else {
       if (this.drop >= P.minDrop) { this.surge += Math.min(P.max,this.drop*P.perMetre); pulledOut = true; }
       this.drop = 0;
