@@ -61,13 +61,16 @@ export class Momentum {
   private drop = 0;
   private surge = 0;
   reset() { this.drop = this.surge = 0; }
-  /** `cruise` is the speed the throttle asks for and `coast` the result of coastEffect. `pulledOut` is true on the step a dive is levelled out. */
-  step(speed:number, pitch:number, cruise:number, coast:number, dt:number): { speed:number; pulledOut:boolean } {
+  /**
+   * `cruise` is the speed the throttle asks for and `coast` the result of coastEffect. `pulledOut` is true on the step a dive is levelled out.
+   * `stunt` is true while a held loop or split S turns the plane: the stunt rules then own the trade of speed for height.
+   */
+  step(speed:number, pitch:number, cruise:number, coast:number, dt:number, stunt = false): { speed:number; pulledOut:boolean } {
     const P = AIR.pullOut, C = AIR.coast, vertical = Math.sin(pitch), limit = Math.sin(STUNT.limits.pitch);
     const goal = cruise+coast*C.speed;
     const pull = speed > goal ? AIR.drag*(1-coast*(1-C.drag)) : AIR.thrust;
     // Past the normal pitch range the stunt rules take over the trade of speed for height.
-    speed += (-AIR.gravity*clamp(vertical,-limit,limit)+(goal-speed)*pull)*dt;
+    speed += ((stunt ? 0 : -AIR.gravity*clamp(vertical,-limit,limit))+(goal-speed)*pull)*dt;
     let pulledOut = false;
     if (vertical < P.dive) this.drop -= vertical*speed*dt;
     else if (vertical < P.level) this.drop = Math.max(0,this.drop-P.forget*dt);

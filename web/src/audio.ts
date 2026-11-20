@@ -6,6 +6,7 @@ export class FlightAudio {
   private wind?: GainNode;
   private filter?: BiquadFilterNode;
   private noise?: AudioBuffer;
+  private hiss?: GainNode;
   private unlock = () => {
     void this.context?.resume().then(() => {
       window.removeEventListener('pointerup',this.unlock);
@@ -26,6 +27,10 @@ export class FlightAudio {
         this.filter=ctx.createBiquadFilter(); this.filter.type='lowpass';
         this.wind=ctx.createGain(); this.wind.gain.value=0;
         source.connect(this.filter).connect(this.wind).connect(this.master); source.start();
+        const spray=ctx.createBufferSource(), band=ctx.createBiquadFilter(); spray.buffer=buffer; spray.loop=true; spray.playbackRate.value=1.31;
+        band.type='highpass'; band.frequency.value=2600;
+        this.hiss=ctx.createGain(); this.hiss.gain.value=0;
+        spray.connect(band).connect(this.hiss).connect(this.master); spray.start();
       }
       if (this.context.state !== 'running') {
         window.addEventListener('pointerup',this.unlock);
@@ -43,6 +48,10 @@ export class FlightAudio {
     const t=this.context.currentTime, ratio=Math.max(0,Math.min(1,speed/FEEL.fov.maxSpeed));
     this.wind.gain.setTargetAtTime(flying?FEEL.audio.wind*ratio:0,t,FEEL.audio.smoothing);
     this.filter.frequency.setTargetAtTime(350+ratio*2200,t,FEEL.audio.smoothing);
+  }
+  /** Spray hiss while skimming the sea; `depth` is 0 to 1. */
+  skim(depth:number) {
+    if(this.context && this.hiss)this.hiss.gain.setTargetAtTime(depth?FEEL.skim.hiss*(.4+.6*depth):0,this.context.currentTime,.07);
   }
   chime(streak:number) {this.tone(chimePitch(streak),FEEL.audio.chime,.22);}
   boost() {this.tone(130,FEEL.audio.boost,.3,480);}
