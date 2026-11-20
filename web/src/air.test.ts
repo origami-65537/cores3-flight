@@ -18,11 +18,18 @@ test('level flight holds the cruise speed', () => {
 
 test('a dive builds speed, pulling out adds a surge, and the speed is carried into level flight', () => {
   const momentum = new Momentum(), dive = fly(momentum,cruise,-STUNT.limits.pitch,4);
-  assert.ok(dive.speed > cruise+18 && !dive.pulledOut);
+  assert.ok(dive.speed > cruise+30 && !dive.pulledOut);
   const out = fly(momentum,dive.speed,.05,AIR.pullOut.seconds);
   assert.ok(out.pulledOut && out.speed > dive.speed+5);
   const later = fly(momentum,out.speed,0,3);
   assert.ok(later.speed > cruise+12 && later.speed < out.speed);
+});
+
+test('a dive gains speed one and a half times as fast as the same climb loses it', () => {
+  const gain = new Momentum().step(cruise,-STUNT.limits.pitch,cruise,0,dt).speed-cruise;
+  const loss = cruise-new Momentum().step(cruise,STUNT.limits.pitch,cruise,0,dt).speed;
+  assert.ok(Math.abs(gain/loss-1.5) < 1e-6);
+  assert.ok(Math.abs(gain/dt-AIR.dive*Math.sin(STUNT.limits.pitch)) < 1e-6);
 });
 
 test('letting the nose ease back to level after a dive gives the surge too', () => {

@@ -4,8 +4,8 @@ import { STUNT } from './stunts';
 import { VOLCANO, terrainHeight, type Point } from './world';
 
 export const AIR = {
-  // Speed in m/s gained per second of pointing straight down; the normal pitch range reaches about half of that.
-  gravity:15, thrust:2, drag:.12, maxSpeed:95,
+  // Speed in m/s gained per second of pointing straight down and lost per second of pointing straight up; the normal pitch range reaches about half of that.
+  dive:22.5, climb:15, thrust:2, drag:.12, maxSpeed:95,
   // Levelling out of a dive that lost at least minDrop metres adds a surge on top of the speed the dive built.
   // Letting go of the controls eases the nose up to level from below, so level starts just under the horizon.
   pullOut: { dive:-.1, level:-.03, minDrop:45, perMetre:.1, max:14, seconds:.5, forget:25 },
@@ -70,7 +70,7 @@ export class Momentum {
     const goal = cruise+coast*C.speed;
     const pull = speed > goal ? AIR.drag*(1-coast*(1-C.drag)) : AIR.thrust;
     // Past the normal pitch range the stunt rules take over the trade of speed for height.
-    speed += ((stunt ? 0 : -AIR.gravity*clamp(vertical,-limit,limit))+(goal-speed)*pull)*dt;
+    speed += ((stunt ? 0 : -(vertical < 0 ? AIR.dive : AIR.climb)*clamp(vertical,-limit,limit))+(goal-speed)*pull)*dt;
     let pulledOut = false;
     if (vertical < P.dive) this.drop -= vertical*speed*dt;
     else if (vertical < P.level) this.drop = Math.max(0,this.drop-P.forget*dt);
