@@ -256,13 +256,14 @@ function showText(element:HTMLElement,value:string) {
   if (element.textContent!==value) element.textContent=value;
 }
 const behind=new THREE.Vector3(), lookTarget=new THREE.Vector3(), up=new THREE.Vector3(0,1,0);
-// Header and footer stay off screen during play; moving the mouse brings them back for a moment.
+// Header and footer stay off screen during play; moving the mouse, touching the screen or pressing Tab brings them back for a moment.
 let playing=false, peekTimer=0;
-window.addEventListener('pointermove',e=>{
-  if(e.pointerType!=='mouse')return;
+function peek() {
   document.body.classList.add('peek'); clearTimeout(peekTimer);
   peekTimer=window.setTimeout(()=>document.body.classList.remove('peek'),2500);
-});
+}
+window.addEventListener('pointermove',peek); window.addEventListener('pointerdown',peek);
+window.addEventListener('keydown',e=>{if(e.code==='Tab')peek();});
 function animate() {
   requestAnimationFrame(animate);
   const frameTime=clock.getDelta();
