@@ -1,6 +1,6 @@
 # 空路 / SKYLINE — CoreS3 Flight
 
-M5Stack CoreS3 を傾けて、PC の空を飛ぶ小さな 3D フライトゲーム。デバイスなしでもキーボードだけで遊べます。前進は自動。40 個のリングを順番に狙い、くぐると +100 点。地面・岩柱への衝突でフライト終了です。
+M5Stack CoreS3 を傾けて、PC の空を飛ぶ小さな 3D フライトゲーム。デバイスなしでもキーボードだけで遊べます。前進は自動。舞台は小さな島で、遠くから見える 5 つの名所（灯台の岬とアーチ岩、吊り橋、海の鳥居、火山、ツインタワー）それぞれに、くぐり抜けられる場所があります。くぐるたびに +100 点、光のかけらが舞って島の時間帯が変わります。海・地面・建物への衝突でフライト終了です。
 
 ## ブラウザで遊ぶ
 
@@ -30,9 +30,9 @@ npm run dev
 | C | CoreS3 のセンター合わせ |
 | M | Mute / unmute audio |
 
-最初はブリーフィング中で飛行・時間は停止しています。Enter / Space またはカードのクリックで離陸します (Take off)。地面・岩柱への衝突でフライト終了。結果画面では R / Enter でリトライでき、すぐに飛行が始まります。
+最初はブリーフィング中で飛行・時間は停止しています。Enter / Space またはカードのクリックで離陸します (Take off)。海・地面・建物への衝突でフライト終了。結果画面では R / Enter でリトライでき、すぐに飛行が始まります。
 
-低高度・降下時は PULL UP、前方の岩柱には OBSTACLE を表示します。金色が次のリングです。マーカーまたは画面端の矢印を頼りに、照準をリングの中心へ合わせてください。リングを逃しても次に進めます。コース後半はリングが小さく、カーブが大きくなります。飛行中の画面に出るのはスコア・速度・高度と次のリングの案内だけです。ヘッダーと画面下の操作一覧は飛行中は隠れ、マウスを動かす・画面にタッチする・Tab を押すと数秒だけ表示されます。
+決まったコースや順番はなく、島のどこへ飛んでも構いません。くぐれる場所を示す文字や目印は画面に出ません。アーチ岩の中、吊り橋の下、鳥居の中、火口の切れ目、ツインタワーの間（連絡橋の下）を、どちら向きにでも抜けられます。同じ場所は 260 m 以上離れるともう一度くぐれます。このまま進むと地面や海にぶつかるときは PULL UP、建物や岩にぶつかるときは OBSTACLE を表示します。島から約 2 km 離れると海霧に包まれ、そのまま進むと島の反対側から戻ってきます。飛行中の画面に出るのはスコア・速度・高度だけです。ヘッダーと画面下の操作一覧は飛行中は隠れ、マウスを動かす・画面にタッチする・Tab を押すと数秒だけ表示されます。
 
 画面下のボタンでもリセット・センター合わせができます。「全画面」でゲームを全画面表示にし、Esc キーで元の表示に戻せます。
 
@@ -70,7 +70,7 @@ pio run
 3. レーダーが正立する横向きで本体を自然に持ち、接続すると、最初の姿勢データから自動でセンターを合わせます。持ち直したら「センター合わせ」または C を押し、「センター設定」が表示されるまで約 0.2 秒キープしてください。本体の上辺を上げると機首が上がり、右辺を下げると右にバンクします。最大操作角は約 30°、小さな動きを無視するデッドゾーンと平滑化付きです。
 4. 本体画面の **下部左（BOOST）** を押すとブースト、**下部右（CENTER）** を押すとセンター合わせ。基準姿勢・持ち方で向きが変わるため、飛行前に軽く傾けて操作方向を確認してください。
 
-本体のレーダーは機首が上、半径 600 m です。黄色の点はリングの方向と距離を示します。リングの高さは PC 画面で確認してください。プレイ中の本体画面はレーダーと BOOST / CENTER ボタンだけです（スコア・速度・高度は PC 画面で確認します）。左上の `NO GAME DATA` はゲームから未受信、`GAME DATA LOST` は受信が 2 秒途切れた状態、`IMU: NO DATA` は姿勢センサーの値が取れていない状態です。Wi-Fi の状態は、ゲームのデータを受信していない間だけ右上に表示します。USB を抜くとキーボードに戻ります。ブラウザに IMU メッセージが 0.5 秒届かないと傾き操作を無効化します。キーボードは接続中も利用できます。
+本体のレーダーは機首が上、半径 1500 m です（ゲームが `range` を送らない場合は 600 m）。黄色の点は 5 つの名所のくぐり抜け場所の方向と距離を示します。プレイ中の本体画面はレーダーと BOOST / CENTER ボタンだけです（スコア・速度・高度は PC 画面で確認します）。左上の `NO GAME DATA` はゲームから未受信、`GAME DATA LOST` は受信が 2 秒途切れた状態、`IMU: NO DATA` は姿勢センサーの値が取れていない状態です。Wi-Fi の状態は、ゲームのデータを受信していない間だけ右上に表示します。USB を抜くとキーボードに戻ります。ブラウザに IMU メッセージが 0.5 秒届かないと傾き操作を無効化します。キーボードは接続中も利用できます。
 
 Fedora GNOME では RPM 版の Google Chrome または Chromium（`sudo dnf install chromium`）を使ってください。Flatpak 版で USB ポートが表示されない場合は、サンドボックスを変更する前に RPM 版で試してください。書き込み後に USB ポートが再接続されることがあるので、ブラウザでは起動後のポートを選びます。
 
@@ -141,9 +141,9 @@ CoreS3 → PC、約 50 Hz:
 
 PC → CoreS3、約 10 Hz:
 ```json
-{"t":"radar","h":25.0,"o":[[40,-200],[-30,-380]],"score":100,"speed":45,"alt":70}
+{"t":"radar","h":25.0,"range":1500,"o":[[40,-200],[-30,-380]],"score":100,"speed":45,"alt":70}
 ```
-`h` は機首角（度）。0° は世界の -Z、正は左旋回、前方ベクトルは `[-sin(h), -cos(h)]`。`o` はプレイヤーから見た世界座標差 `[dx,dz]`（m）の配列。距離 1200 m 内、近い順、最大 16 個、空なら `[]`。デバイス側で機首方向へ回転して表示します。`score`（点数）・`speed`（m/s）・`alt`（地上からの m）は旧ファームウェア向けに送り続けますが、現在のファームウェアは表示しません。受信行は最大 2048 文字（PC の入力は 4096 文字まで）。
+`h` は機首角（度）。0° は世界の -Z、正は左旋回、前方ベクトルは `[-sin(h), -cos(h)]`。`range` はレーダーの半径（m）で、無ければ 600。`o` はプレイヤーから見た世界座標差 `[dx,dz]`（m）の配列で、5 つの名所のくぐり抜け場所を送ります（最大 16 個）。デバイス側で機首方向へ回転して表示します。`score`（点数）・`speed`（m/s）・`alt`（地上からの m）は旧ファームウェア向けに送り続けますが、現在のファームウェアは表示しません。受信行は最大 2048 文字（PC の入力は 4096 文字まで）。
 
 PC → CoreS3 event cues (USB and WebSocket): `{"t":"sfx","s":"boost"}` on boost start, or `{"t":"sfx","s":"pullup"}` when PULL UP begins (2-second warning cooldown). Firmware accepts only these names, rate-limits cues to 300 ms, and queues a modest-volume 90 ms speaker tone without blocking the IMU loop.
 
@@ -164,7 +164,7 @@ pio run -t buildfs
 
 `web/` は Vite + TypeScript + three.js、`firmware/` は PlatformIO + Arduino + M5Unified + ArduinoJson。CI は両方をビルドします。main への push で GitHub Pages に自動デプロイ（管理者権限・リポジトリの Pages 利用許可が必要）。Vite の base は `./`。本体無しでもブラウザ版は動きますが、実機の IMU 軸・タッチ・USB は実機での最終調整を推奨します。
 
-English: a 40-ring arcade flight course with keyboard or CoreS3 motion controls. Aim at the gold ring, use the bearing arrow if you lose sight of it, and keep flying after a miss. Avoid terrain and press R to retry. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.
+English: free flight over a small island with keyboard or CoreS3 motion controls. Five landmarks (lighthouse cape with a sea arch, suspension bridge, torii in the sea, volcano, twin towers) each have a way under or through; flying through scores +100, scatters light and moves the time of day on, with no text or markers on screen. Hitting the sea, the land or a structure ends the flight; press R to retry. Chrome/Edge required only for USB Web Serial; over Wi-Fi, open http://cores3-flight.local/ (served by the CoreS3) in any browser, including Firefox.
 
 The UI fonts in `web/public/fonts/` are SIL OFL subsets of Space Grotesk (Latin) and Noto Sans JP (Japanese game text). Update the Japanese subset when adding new UI characters: `pyftsubset 'NotoSansJP[wght].ttf' --text-file=chars.txt --flavor=woff2 --output-file=web/public/fonts/NotoSansJP-UI.woff2` (fonttools and brotli), with every Japanese character used in `web/src` and `web/index.html` in `chars.txt`.
 

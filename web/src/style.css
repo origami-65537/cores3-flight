@@ -7,7 +7,6 @@
 .flight-card h2{font-size:24px;font-weight:500;line-height:1.5;margin:16px 0}.flight-card h2 small{display:block;font-size:16px}.flight-card p{font-size:12px;line-height:1.9}.flight-card ul{list-style:none;padding:0;font-size:12px;line-height:2.5}.flight-card li kbd{display:inline-block;min-width:126px;line-height:1.5;margin-right:8px}.flight-card button{width:100%;margin-top:12px;background:#173c46;color:#fff5d8;line-height:1.8}.flight-card button:hover{background:#315763}
 .result-stats{display:flex;justify-content:space-between;gap:16px;border-block:1px solid #173c4633;padding:20px 0}.result-stats dt{font-size:10px}.result-stats dd{margin:8px 0 0;font-size:26px}
 #warning{position:absolute;top:25%;left:50%;transform:translateX(-50%);padding:12px 22px;border:1px solid #ffdfb8;border-radius:6px;background:#c8402f;color:#fff;font-size:15px;font-weight:700;white-space:nowrap;animation:warning-pulse .7s infinite alternate;pointer-events:none}
-#ring-guide{position:absolute;transform:translate(-50%,-50%);color:#fff4c7;text-shadow:0 1px 4px #173c46;pointer-events:none;text-align:center}.guide-symbol{display:block;font-size:30px;line-height:1}.guide-distance{display:block;font-size:11px;background:#173c46bf;border-radius:10px;padding:3px 7px;margin-top:4px;white-space:nowrap}
 #crash-flash{position:fixed;inset:0;pointer-events:none;z-index:6}#crash-flash.active{animation:crash-flash .65s ease-out forwards}
 @keyframes warning-pulse{to{box-shadow:0 0 0 6px #c8402f55}}@keyframes crash-flash{from{background:#e332327d}to{background:transparent}}
 .instruments strong{font-size:24px;white-space:nowrap}
@@ -16,7 +15,6 @@ body.play.peek .instruments{top:calc(var(--header-height,112px) + 6px)}
 @media(max-height:700px){.flight-card{padding:20px}}
 @media(prefers-reduced-motion:reduce){#warning{animation:none}}
 header,footer{z-index:7}
-.reticle{position:absolute;transform:translate(-50%,-50%);color:#fff;font-size:24px;line-height:1;text-shadow:0 0 3px #173c46,0 0 5px #173c46;pointer-events:none}
 @media(max-width:850px),(max-height:600px){
   header{padding:12px 18px}
   .instruments{right:12px;top:12px;gap:14px;padding:8px 12px}

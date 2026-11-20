@@ -30,6 +30,7 @@ float roll = 0, pitch = 0, yaw = 0, heading = 0;
 float gyroX = 0, gyroY = 0, gyroZ = 0;
 float targets[16][2];
 int targetCount = 0;
+float radarRange = 600;
 uint32_t lastImu = 0, lastDraw = 0, lastRadar = 0;
 uint32_t lastImuSample = 0;
 bool received = false, initialized = false, overflow = false;
@@ -50,6 +51,8 @@ void handleRadar(const String &message) {
   }
   if (doc["t"] == "radar" && doc["h"].is<float>() && doc["o"].is<JsonArray>()) {
     heading = doc["h"].as<float>();
+    float range = doc["range"] | 600.0f;
+    radarRange = std::isfinite(range) && range >= 100 ? range : 600;
     targetCount = 0;
     for (JsonArray point : doc["o"].as<JsonArray>()) {
       if (targetCount >= 16) break;
@@ -146,7 +149,7 @@ void drawRadar(uint32_t now) {
       float dx = targets[i][0], dz = targets[i][1];
       float right = dx*cosf(angle)-dz*sinf(angle);
       float forward = -dx*sinf(angle)-dz*cosf(angle);
-      float x = right/600*radius, y = -forward/600*radius;
+      float x = right/radarRange*radius, y = -forward/radarRange*radius;
       if (x*x+y*y < (radius-4)*(radius-4)) radar.fillCircle(cx+int(x),cy+int(y),3,0xFECA);
     }
   }
