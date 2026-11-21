@@ -50,7 +50,9 @@ export function toriiDressing(s: Solid, add: Dress, red: THREE.Material, ink: TH
       add(new THREE.BoxGeometry(s.hx*2, s.hy*2, s.hz*2), red, s.x, s.y, s.z, s.yaw);
       return;
     }
-    const curve = (x: number) => s.hy*.68*Math.abs(x/s.hx)**3;
+    // The solid is rectangular. A shallow sweep keeps the visible top less than
+    // one metre from its collision envelope (inside the aircraft's 2m margin).
+    const curve = (x: number) => s.hy*.20*Math.abs(x/s.hx)**3;
     const beam = (bottom: number, top: number, depth: number) => {
       const shape = new THREE.Shape();
       for (let i = 0; i <= 12; i++) {
@@ -64,9 +66,9 @@ export function toriiDressing(s: Solid, add: Dress, red: THREE.Material, ink: TH
       shape.closePath();
       return new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false }).translate(0, 0, -depth/2);
     };
-    add(beam(-s.hy, s.hy*.04, s.hz*1.74), red, s.x, s.y, s.z, s.yaw);
-    add(beam(s.hy*.04, s.hy*.30, s.hz*2), ink, s.x, s.y, s.z, s.yaw);
-    add(beam(-s.hy*.11, s.hy*.04, s.hz*1.80), bronze, s.x, s.y, s.z, s.yaw);
+    add(beam(-s.hy, s.hy*.54, s.hz*1.74), red, s.x, s.y, s.z, s.yaw);
+    add(beam(s.hy*.54, s.hy*.80, s.hz*2), ink, s.x, s.y, s.z, s.yaw);
+    add(beam(s.hy*.39, s.hy*.54, s.hz*1.80), bronze, s.x, s.y, s.z, s.yaw);
   }
 }
 

@@ -4,6 +4,21 @@ import * as THREE from 'three';
 import { bridgeDressing, toriiDressing, type Dress } from './island-dressing';
 import { landmarks } from './world';
 
+test('the swept torii cap stays within aircraft clearance of the solid top', () => {
+  const lintel = landmarks.find(l => l.id === 'torii')!.solids.find(s => s.kind === 'box' && s.hy >= 3)!;
+  assert.equal(lintel.kind, 'box');
+  if (lintel.kind !== 'box') return;
+  const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }), meshes: THREE.Mesh[] = [];
+  toriiDressing(lintel, geometry => meshes.push(new THREE.Mesh(geometry, material)), material, material, material);
+  for (const fraction of [-.98, -.5, 0, .5, .98]) {
+    const hit = new THREE.Raycaster(new THREE.Vector3(lintel.hx*fraction, lintel.hy+5, 0), new THREE.Vector3(0, -1, 0)).intersectObjects(meshes)[0];
+    assert.ok(hit);
+    assert.ok(lintel.hy-hit.point.y <= 1, `invisible upper collision gap at ${fraction}`);
+  }
+  for (const mesh of meshes) mesh.geometry.dispose();
+  material.dispose();
+});
+
 test('torii and bridge dressing leave the flight openings clear edge to edge', () => {
   const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
   for (const id of ['torii', 'bridge']) {
