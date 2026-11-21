@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FEEL } from './feel';
 import { coastMeshes, ocean, random, waterfall } from './island-meshes';
-import { bridgeDressing, toriiDressing, trees } from './island-dressing';
-import { BRIDGE, TOWN, VOLCANO, WATERFALL, nearStructure, solids, surfaceHeight, terrainHeight, type Look, type Solid } from './world';
+import { bridgeDressing, roadDressing, shrineDressing, toriiDressing, trees } from './island-dressing';
+import { BRIDGE, ROAD, TOWN, VOLCANO, WATERFALL, nearStructure, solids, surfaceHeight, terrainHeight, woods, type Look, type Solid } from './world';
 
 const SKY = { clearNear: 700, clearFar: 5200, mistNear: 15, mistFar: 170, seconds: 2.5 };
 // Each fly-through moves the island on to the next time of day.
@@ -144,8 +144,8 @@ export class Island {
       tower: this.glass,
       house: new THREE.MeshStandardMaterial({ color: 0xf3e9d2, roughness: .9 }),
       wood: new THREE.MeshLambertMaterial({ color: 0x79533e }),
-      shrine: new THREE.MeshStandardMaterial({ color: 0xc74830, roughness: .78 }),
-      stilt: new THREE.MeshLambertMaterial({ color: 0x79533e }),
+      shrine: new THREE.MeshLambertMaterial({ color: 0xe1d8bd }),
+      stilt: new THREE.MeshLambertMaterial({ color: 0x645244 }),
     };
     const roof = new THREE.MeshLambertMaterial({ color: 0xb84831, flatShading: true });
     const windows = new THREE.MeshLambertMaterial({ color: 0x304b5b });
@@ -153,6 +153,7 @@ export class Island {
     const bronze = new THREE.MeshStandardMaterial({ color: 0x967853, metalness: .35, roughness: .72 });
     const cable = new THREE.MeshLambertMaterial({ color: 0xa1b1b2 });
     const edging = new THREE.MeshLambertMaterial({ color: 0xcccfbd });
+    const path = new THREE.MeshLambertMaterial({ color: 0xa5a795, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const batches = new Map<THREE.Material, THREE.BufferGeometry[]>();
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, yaw = 0) => {
       const mesh = geometry.rotateY(yaw).translate(x, y, z);
@@ -161,6 +162,7 @@ export class Island {
     };
     for (const s of solids) {
       if (s.look === 'vermilion') toriiDressing(s, add, looks.vermilion, ink, bronze);
+      else if (s.look === 'shrine' || s.look === 'stilt') shrineDressing(s, add, looks.vermilion, ink, looks.stilt, looks.shrine);
       else if (s.kind === 'arch') add(archGeometry(s), looks[s.look], s.x, s.y, s.z, s.yaw);
       else if (s.kind === 'box') {
         if (s.look === 'house') {
@@ -211,6 +213,7 @@ export class Island {
       }
     }
     bridgeDressing(add, cable, edging);
+    roadDressing(ROAD, add, path);
     add(new THREE.CircleGeometry(VOLCANO.floorRadius+8, 24).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({ color: 0xff7a33 }), VOLCANO.x, VOLCANO.floor+.8, VOLCANO.z);
     for (const [material, meshes] of batches) scene.add(new THREE.Mesh(mergeGeometries(meshes), material));
     this.scatter('trees', trees(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), i => {
@@ -218,6 +221,7 @@ export class Island {
       const x = near ? -895+1450*random(i, 2) : -1350+3100*random(i, 2);
       const z = near ? 365+710*random(i, 3) : -1350+2750*random(i, 3);
       const h = surfaceHeight(x, z), size = 4+8*random(i, 4);
+      if (random(i, 33) > woods(x, z)) return null;
       if (h < 10 || h > 167 || slopeAt(x, z) > .61 || Math.hypot(x-TOWN.x, z-TOWN.z) < TOWN.radius || nearStructure({ x, y: h+size, z }, size+8)) return null;
       if (Math.abs(x-WATERFALL.x) < 28 && z > WATERFALL.z0-14 && z < WATERFALL.z1) return null;
       return [x, h-.36, z, size, size];
