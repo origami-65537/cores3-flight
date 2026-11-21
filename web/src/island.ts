@@ -134,13 +134,14 @@ export class Island {
     const [land, foam] = coastMeshes();
     this.foam = foam.material;
     scene.add(this.dome, this.ambient, this.sun, ocean(this.sea), land, foam, waterfall());
+    const deckSurface = new THREE.MeshStandardMaterial({ color: 0x6d7478, roughness: .8 });
     const looks: Record<Look, THREE.Material> = {
       rock: new THREE.MeshLambertMaterial({ color: 0x918584, flatShading: true, side: THREE.DoubleSide }),
       white: new THREE.MeshStandardMaterial({ color: 0xf7f3e8, roughness: .7 }),
       red: new THREE.MeshStandardMaterial({ color: 0xd9502f, roughness: .6 }),
       vermilion: new THREE.MeshStandardMaterial({ color: 0xc74830, roughness: .78 }),
       steel: new THREE.MeshStandardMaterial({ color: 0x8d979c, roughness: .6 }),
-      deck: new THREE.MeshStandardMaterial({ color: 0x6d7478, roughness: .8 }),
+      deck: deckSurface,
       tower: this.glass,
       house: new THREE.MeshStandardMaterial({ color: 0xf3e9d2, roughness: .9 }),
       wood: new THREE.MeshLambertMaterial({ color: 0x79533e }),
@@ -154,7 +155,10 @@ export class Island {
     const cable = new THREE.MeshLambertMaterial({ color: 0xa1b1b2 });
     const edging = new THREE.MeshLambertMaterial({ color: 0xcccfbd });
     const anchorStone = new THREE.MeshStandardMaterial({ color: 0xb3b2a4, roughness: .95 });
-    const path = new THREE.MeshLambertMaterial({ color: 0xa5a795, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    // Identical lighting at the seam; the vertex tint eases back to the town paving inland.
+    const path = deckSurface.clone();
+    path.color.set(0xffffff); path.vertexColors = true;
+    path.polygonOffset = true; path.polygonOffsetFactor = -1; path.polygonOffsetUnits = -1;
     const batches = new Map<THREE.Material, THREE.BufferGeometry[]>();
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, yaw = 0) => {
       const mesh = geometry.rotateY(yaw).translate(x, y, z);
@@ -215,7 +219,7 @@ export class Island {
       }
     }
     bridgeDressing(add, cable, edging);
-    roadDressing(ROAD, add, path);
+    roadDressing(ROAD, add, path, deckSurface.color);
     add(new THREE.CircleGeometry(VOLCANO.floorRadius+8, 24).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({ color: 0xff7a33 }), VOLCANO.x, VOLCANO.floor+.8, VOLCANO.z);
     for (const [material, meshes] of batches) scene.add(new THREE.Mesh(mergeGeometries(meshes), material));
     this.scatter('trees', trees(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), i => {

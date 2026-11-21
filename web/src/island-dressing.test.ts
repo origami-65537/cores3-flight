@@ -4,19 +4,27 @@ import * as THREE from 'three';
 import { bridgeAnchorDressing, bridgeDressing, roadDressing, toriiDressing, type Dress } from './island-dressing';
 import { BRIDGE, ROAD, landmarks } from './world';
 
-test('the flared road meets the full deck width, perpendicular and flush', () => {
+test('the flared road meets the full deck width, perpendicular and flush with matching tint', () => {
   const material = new THREE.MeshBasicMaterial();
+  const deckColor = new THREE.Color(0x6d7478);
   roadDressing(ROAD, geometry => {
     const vertices = geometry.getAttribute('position'), seam: THREE.Vector3[] = [];
     for (let i = 0; i < vertices.count; i++) if (Math.abs(vertices.getX(i)-BRIDGE.ends[0]) < 1e-4) {
       seam.push(new THREE.Vector3().fromBufferAttribute(vertices, i));
+      const tint = new THREE.Color().fromBufferAttribute(geometry.getAttribute('color'), i);
+      assert.ok(Math.abs(tint.r-deckColor.r)+Math.abs(tint.g-deckColor.g)+Math.abs(tint.b-deckColor.b) < 1e-6);
     }
     assert.ok(seam.length >= 3);
     assert.equal(Math.min(...seam.map(p => p.z)), BRIDGE.z-9);
     assert.equal(Math.max(...seam.map(p => p.z)), BRIDGE.z+9);
     for (const p of seam) assert.ok(Math.abs(p.y-(BRIDGE.deck+2.52)) < 1e-4);
+    const road = new THREE.Mesh(geometry, material);
+    for (const side of [-8, 0, 8]) {
+      const ray = new THREE.Raycaster(new THREE.Vector3(BRIDGE.ends[0]+.1, 100, BRIDGE.z+side), new THREE.Vector3(0, -1, 0));
+      assert.ok(ray.intersectObject(road).length, 'road overlaps the deck so its lifted edge cannot expose grass');
+    }
     geometry.dispose();
-  }, material);
+  }, material, deckColor);
   material.dispose();
 });
 

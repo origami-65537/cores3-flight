@@ -125,7 +125,7 @@ export function bridgeAnchorDressing(s: Extract<Solid, { kind: 'box' }>, add: Dr
 }
 
 /** The town road flares into the west deck, with no wall or in-flight route marker. */
-export function roadDressing(path: readonly { x: number; z: number }[], add: Dress, material: THREE.Material) {
+export function roadDressing(path: readonly { x: number; z: number }[], add: Dress, material: THREE.Material, deckColor: THREE.Color) {
   const points: THREE.Vector2[] = [];
   for (let i = 1; i < path.length; i++) {
     const a = new THREE.Vector2(path[i-1].x, path[i-1].z), b = new THREE.Vector2(path[i].x, path[i].z);
@@ -134,7 +134,7 @@ export function roadDressing(path: readonly { x: number; z: number }[], add: Dre
   }
   if (!points.length) return;
   points.push(new THREE.Vector2(path[path.length-1].x, path[path.length-1].z));
-  const positions: number[] = [];
+  const positions: number[] = [], colors: number[] = [];
   let distance = 0;
   const rows = points.map((p, i) => {
     if (i > 0) distance += p.distanceTo(points[i-1]);
@@ -143,17 +143,25 @@ export function roadDressing(path: readonly { x: number; z: number }[], add: Dre
     const tangent = points[Math.min(i+1, points.length-1)].clone().sub(points[Math.max(0, i-1)]).normalize();
     // The first cross-section is exactly parallel to the 18m deck's end face.
     tangent.lerp(new THREE.Vector2(-1, 0), 1-THREE.MathUtils.smoothstep(distance, 0, 24)).normalize();
-    return [-1, 0, 1].map(side => {
+    // Hold the exact deck tint at the join, then soften into the original pale road.
+    const tint = new THREE.Color(0xa5a795).lerp(deckColor, 1-THREE.MathUtils.smoothstep(distance, 12, 100));
+    const row = [-1, 0, 1].map(side => {
       const x = p.x-tangent.y*width*side, z = p.y+tangent.x*width*side;
       const y = THREE.MathUtils.lerp(surfaceHeight(x, z)+.12, BRIDGE.deck+2.52,
         1-THREE.MathUtils.smoothstep(distance, 0, 12));
       return [x, y, z];
     });
+    return { points: row, tint };
   });
+  // Cover the deck by 25cm: the road's 2cm lift must not reveal grass at its cut edge.
+  rows.unshift({ points: rows[0].points.map(([x, y, z]) => [x+.25, y, z]), tint: rows[0].tint });
   for (let i = 1; i < rows.length; i++) for (let j = 0; j < 2; j++) {
-    for (const point of [rows[i-1][j], rows[i-1][j+1], rows[i][j], rows[i-1][j+1], rows[i][j+1], rows[i][j]]) positions.push(...point);
+    for (const [row, column] of [[i-1, j], [i-1, j+1], [i, j], [i-1, j+1], [i, j+1], [i, j]]) {
+      positions.push(...rows[row].points[column]); colors.push(...rows[row].tint.toArray());
+    }
   }
-  const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    .setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geometry.computeVertexNormals();
   add(geometry, material, 0, 0, 0);
 }
