@@ -18,6 +18,11 @@ test('the flared road meets the full deck width, perpendicular and flush with ma
     assert.equal(Math.min(...seam.map(p => p.z)), BRIDGE.z-9);
     assert.equal(Math.max(...seam.map(p => p.z)), BRIDGE.z+9);
     for (const p of seam) assert.ok(Math.abs(p.y-(BRIDGE.deck+2.52)) < 1e-4);
+    const road = new THREE.Mesh(geometry, material);
+    for (const side of [-8, 0, 8]) {
+      const ray = new THREE.Raycaster(new THREE.Vector3(BRIDGE.ends[0]+.1, 100, BRIDGE.z+side), new THREE.Vector3(0, -1, 0));
+      assert.ok(ray.intersectObject(road).length, 'road overlaps the deck so its lifted edge cannot expose grass');
+    }
     geometry.dispose();
   }, material, deckColor);
   material.dispose();

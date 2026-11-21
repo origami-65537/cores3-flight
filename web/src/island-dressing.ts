@@ -153,6 +153,8 @@ export function roadDressing(path: readonly { x: number; z: number }[], add: Dre
     });
     return { points: row, tint };
   });
+  // Cover the deck by 25cm: the road's 2cm lift must not reveal grass at its cut edge.
+  rows.unshift({ points: rows[0].points.map(([x, y, z]) => [x+.25, y, z]), tint: rows[0].tint });
   for (let i = 1; i < rows.length; i++) for (let j = 0; j < 2; j++) {
     for (const [row, column] of [[i-1, j], [i-1, j+1], [i, j], [i-1, j+1], [i, j+1], [i, j]]) {
       positions.push(...rows[row].points[column]); colors.push(...rows[row].tint.toArray());
