@@ -1,7 +1,7 @@
 // The island: terrain, landmark structures and their fly-through openings, as plain numbers.
 // The scene is built from this data, so what the player sees is what they can hit.
 export interface Point { x: number; y: number; z: number }
-export type Look = 'rock' | 'white' | 'red' | 'vermilion' | 'steel' | 'deck' | 'tower' | 'house' | 'wood';
+export type Look = 'rock' | 'white' | 'red' | 'vermilion' | 'steel' | 'deck' | 'tower' | 'house' | 'wood' | 'shrine' | 'stilt';
 // yaw turns a shape around the vertical axis like a heading: its local z axis is the way through.
 export type Solid =
   | { kind: 'cyl'; look: Look; x: number; z: number; r: number; y0: number; y1: number }
@@ -17,16 +17,42 @@ const smooth = (from: number, to: number, n: number) => { const t = clamp((n-fro
 const bump = (x: number, z: number, cx: number, cz: number, r: number) => Math.exp(-((x-cx)**2+(z-cz)**2)/(r*r));
 const local = (dx: number, dz: number, yaw: number): [number, number] => [dx*Math.cos(yaw)-dz*Math.sin(yaw), dx*Math.sin(yaw)+dz*Math.cos(yaw)];
 const offset = (x: number, z: number, yaw: number, side: number, along = 0) => ({ x: x+side*Math.cos(yaw)+along*Math.sin(yaw), z: z-side*Math.sin(yaw)+along*Math.cos(yaw) });
+export interface Spot { readonly x: number; readonly z: number }
+/** Distance from a point to a path, and how far along the path (0 to 1) the nearest point lies. */
+function alongPath(path: readonly Spot[], x: number, z: number): [distance: number, fraction: number] {
+  let best = Infinity, fraction = 0;
+  for (let i = 1; i < path.length; i++) {
+    const a = path[i-1], dx = path[i].x-a.x, dz = path[i].z-a.z;
+    const t = clamp(((x-a.x)*dx+(z-a.z)*dz)/(dx*dx+dz*dz)), d = Math.hypot(x-a.x-dx*t, z-a.z-dz*t);
+    if (d < best) { best = d; fraction = (i-1+t)/(path.length-1); }
+  }
+  return [best, fraction];
+}
 
+const BRIDGE_DECK = 60;
 export const launch: Readonly<Point & { heading: number }> = { x: 0, y: 95, z: 1500, heading: 0 };
 export const VOLCANO = { x: -120, z: -260, rim: 330, floor: 262, rimRadius: 100, floorRadius: 42, skirt: 560, yaw: .1 } as const;
-export const ISLET = { x: 1560, z: 60, r: 175, h: 58 } as const;
+export const ISLET = { x: 1560, z: 60, r: 175, h: BRIDGE_DECK+2.3 } as const;
 export const CAPE = { angle: Math.PI/2-.35, reach: 250, width: .13 } as const;
 export const COVE = { x: -110, z: 1020, rx: 340, rz: 365 } as const;
 export const WATERFALL = { x: 170, z0: 697, z1: 835, width: 26 } as const;
 export const PIER = { x: -235, z0: 652, z1: 784, width: 16, height: 4 } as const;
 export const TOWN = { x: 640, z: -430, yaw: -.98, ground: 14, radius: 210 } as const;
-export const BRIDGE = { x: 1280, z: 60, deck: 60, towerHeight: 125, towers: [1195, 1365], ends: [1085, 1485] } as const;
+export const BRIDGE = { x: 1280, z: 60, deck: BRIDGE_DECK, towerHeight: 125, towers: [1195, 1365], ends: [1085, 1485] } as const;
+/** Open grass that climbs east to the clifftop the bridge leaves from. */
+export const MEADOW = { x: 860, z: 80, rx: 460, rz: 330, low: 26, top: BRIDGE.deck+2.3 } as const;
+/** The road from the west end of the bridge deck down to the town; it lies on the land surface. */
+export const ROAD: readonly Spot[] = [{ x: 1085, z: 60 }, { x: 1010, z: 62 }, { x: 930, z: 40 }, { x: 850, z: -20 }, { x: 790, z: -110 }, { x: 750, z: -200 }, { x: 715, z: -270 }];
+/** The torii stands in a shallow tidal bay between two low arms of land. */
+export const BAY = { x: -1010, z: 150, rx: 250, rz: 225, bed: -2.2 } as const;
+export const BAY_ARMS: readonly (readonly Spot[])[] = [
+  [{ x: -885, z: -85 }, { x: -1000, z: -72 }, { x: -1082, z: -8 }],
+  [{ x: -955, z: 405 }, { x: -1040, z: 365 }, { x: -1088, z: 305 }],
+];
+/** The shrine on the shore behind the torii, on the torii's axis; its front faces the torii. */
+export const SHRINE = { x: -890, z: 150, yaw: Math.PI/2 } as const;
+/** The floor of the valley from the shrine past the south foot of the volcano to the meadow. */
+export const VALLEY: readonly Spot[] = [{ x: -840, z: 150 }, { x: -650, z: 235 }, { x: -420, z: 215 }, { x: -200, z: 290 }, { x: 40, z: 275 }, { x: 230, z: 215 }, { x: 420, z: 175 }];
 // Sea mist closes in past `start`; at `end` the flight carries on from the far side of the island.
 export const MIST = { start: 1900, end: 2550 } as const;
 export const CEILING = 650;
@@ -37,6 +63,16 @@ function coast(angle: number) {
 }
 function hills(x: number, z: number) {
   return (Math.sin(x*.0061+1.3)*Math.cos(z*.0057-.4)+.5*Math.sin(x*.013+z*.011+2.1)+.25*Math.sin(x*.031-z*.027))/1.75;
+}
+const meadow = (x: number, z: number) => smooth(1, .6, Math.hypot((x-MEADOW.x)/MEADOW.rx, (z-MEADOW.z)/MEADOW.rz)+.09*hills(x*1.5, z*1.5+700)*smooth(1000, 800, x));
+function arms(x: number, z: number): [height: number, crest: number] {
+  let height = -30, crest = 0;
+  for (const arm of BAY_ARMS) {
+    const [d, t] = alongPath(arm, x, z), top = (15-8*t)*(1+.3*hills(x*3, z*3)), reach = 78-34*t;
+    height = Math.max(height, -30+(top+30)*smooth(reach*1.5, 6, d));
+    crest = Math.max(crest, smooth(reach*.6, 6, d));
+  }
+  return [height, crest];
 }
 function shelf(x: number, z: number, cx: number, cz: number, rx: number, rz: number, height: number) {
   const u = (x-cx)/rx, v = (z-cz)/rz, angle = Math.atan2(v, u);
@@ -58,6 +94,11 @@ export function terrainHeight(x: number, z: number): number {
     );
     h = Math.max(h, (terraces+4*hills(x, z))*smooth(6, 61, inland));
   }
+  const open = meadow(x, z);
+  if (open > 0) {
+    const grass = MEADOW.low+(MEADOW.top-MEADOW.low)*smooth(520, 1080, x)+(5*hills(x, z)+3.5*hills(x*2.6+90, z*2.6))*smooth(1060, 900, x);
+    h += (grass*smooth(0, 45, inland)-h)*open;
+  }
   const town = smooth(TOWN.radius, TOWN.radius*.6, Math.hypot(x-TOWN.x, z-TOWN.z));
   h += (TOWN.ground-h)*town;
   const v = Math.hypot(x-VOLCANO.x, z-VOLCANO.z);
@@ -74,10 +115,20 @@ export function terrainHeight(x: number, z: number): number {
     // A straight breach through the summit: fly in one side of the crater and out the other.
     h = Math.min(h, VOLCANO.floor+Math.max(0, Math.abs(side)-30)*1.3);
   }
-  const islet = Math.hypot(x-ISLET.x, z-ISLET.z)/ISLET.r;
+  const [fromFloor, way] = alongPath(VALLEY, x, z);
+  if (fromFloor < 300) h -= Math.max(0, h-5-19*way-3*hills(x*2, z*2))*smooth(230+70*hills(x*1.3, z*1.3+500), 30, fromFloor);
+  const around = Math.atan2(z-ISLET.z, x-ISLET.x);
+  const islet = Math.hypot(x-ISLET.x, z-ISLET.z)/(ISLET.r*(1+.1*Math.cos(2*around)*Math.sin(around+.6)+.05*Math.sin(5*around)));
   const outerRock = Math.hypot((x+972)/107, (z-1025)/76);
-  return Math.max(h, islet < 1 ? ISLET.h*(1-islet*islet) : Math.max(-30, (1-islet)*ISLET.r*.12),
+  // The islet is a flat-topped hill, level with the bridge deck where the deck lands on it.
+  h = Math.max(h, islet < 1 ? ISLET.h*smooth(1, .5, islet)+12*bump(x, z, ISLET.x+45, ISLET.z+10, 52) : Math.max(-30, (1-islet)*ISLET.r*.12),
     outerRock < 1 ? 31*(1-outerRock**3) : Math.max(-30, (1-outerRock)*9));
+  const bay = Math.hypot((x-BAY.x)/BAY.rx, (z-BAY.z)/BAY.rz);
+  if (bay < 1.6) {
+    const bars = 2.6*smooth(.35, .9, Math.sin(x*.045+2*Math.sin(z*.021))*Math.cos(z*.038+.6))*smooth(-1085, -960, x);
+    h = Math.max(h, -30+(30+BAY.bed+bars)*smooth(1, .62, bay), arms(x, z)[0]);
+  }
+  return h;
 }
 /** The grid the land is drawn on: `terrainHeight` at each vertex, two flat triangles per cell. */
 export const GRID = { x0: -1700, x1: 1900, z0: -1600, z1: 1700, step: 12 };
@@ -102,6 +153,11 @@ function build(): Landmark[] {
     .map(([side, along, r, h]): Solid => ({ kind: 'cyl', look: 'rock', ...offset(arch.x, arch.z, arch.yaw, side, along), r, y0: -30, y1: h }));
   const torii = { x: -1090, z: 150, yaw: Math.PI/2 };
   const post = (side: number): Solid => ({ kind: 'cyl', look: 'vermilion', ...offset(torii.x, torii.z, torii.yaw, side), r: 4.5, y0: -30, y1: 76 });
+  // Each main post is braced by a short sleeve post in front and behind, tied to it by a rail.
+  const sleeves = [-28, 28].flatMap((side): Solid[] => [
+    ...[-11, 11].map((along): Solid => ({ kind: 'cyl', look: 'vermilion', ...offset(torii.x, torii.z, torii.yaw, side, along), r: 2.4, y0: -8, y1: 31 })),
+    { kind: 'box', look: 'vermilion', ...offset(torii.x, torii.z, torii.yaw, side), y: 24, hx: 1.3, hy: 1.3, hz: 12.5, yaw: torii.yaw },
+  ]);
   const beam = (y: number, hx: number, hy: number, hz: number): Solid => ({ kind: 'box', look: 'vermilion', x: torii.x, y, z: torii.z, hx, hy, hz, yaw: torii.yaw });
   const tower = (side: number, height: number): Solid => ({ kind: 'box', look: 'tower', ...offset(TOWN.x, TOWN.z, TOWN.yaw, side), y: TOWN.ground+height/2-4, hx: 22, hy: height/2+4, hz: 22, yaw: TOWN.yaw });
   const houses = Array.from({ length: 16 }, (_, i): Solid => {
@@ -115,17 +171,13 @@ function build(): Landmark[] {
     for (const side of [-12, 12]) bridge.push({ kind: 'box', look: 'red', x, y: (towerHeight-30)/2, z: bz+side, hx: 4, hy: (towerHeight+30)/2, hz: 3.5, yaw: 0 });
     for (const y of [deck-9, 96, towerHeight-3]) bridge.push({ kind: 'box', look: 'red', x, y, z: bz, hx: 3, hy: 3, hz: 12, yaw: 0 });
   }
-  for (const x of BRIDGE.ends) {
-    const ground = terrainHeight(x, bz);
-    bridge.push({ kind: 'box', look: 'steel', x, y: (ground-6+deck-2.5)/2, z: bz, hx: 7, hy: (deck-2.5-ground+6)/2, hz: 9, yaw: 0 });
-  }
   return [
     { id: 'lighthouse', gate: { x: arch.x, y: 0, z: arch.z, yaw: arch.yaw, halfWidth: 28, halfHeight: 49, round: true },
       solids: [{ kind: 'cyl', look: 'white', x: light.x, z: light.z, r: 12, y0: lightBase-4, y1: lightBase+77 },
         { kind: 'arch', look: 'rock', x: arch.x, y: 0, z: arch.z, yaw: arch.yaw, depth: 28, outer: [64, 80], inner: [30, 52] }, ...stacks] },
     { id: 'bridge', gate: { x: bx, y: (deck-2.5)/2+1, z: bz, yaw: 0, halfWidth: 78, halfHeight: (deck-2.5)/2-1 }, solids: bridge },
     { id: 'torii', gate: { x: torii.x, y: 29.5, z: torii.z, yaw: torii.yaw, halfWidth: 23, halfHeight: 27.5 },
-      solids: [post(-28), post(28), beam(60, 34, 2.5, 2.5), beam(78, 42, 4, 4.5)] },
+      solids: [post(-28), post(28), beam(60, 34, 2.5, 2.5), beam(78, 42, 4, 4.5), ...sleeves] },
     { id: 'volcano', gate: { x: VOLCANO.x, y: (VOLCANO.floor+VOLCANO.rim)/2, z: VOLCANO.z, yaw: VOLCANO.yaw, halfWidth: 45, halfHeight: (VOLCANO.rim-VOLCANO.floor)/2 }, solids: [] },
     { id: 'towers', gate: { x: TOWN.x, y: TOWN.ground+47, z: TOWN.z, yaw: TOWN.yaw, halfWidth: 28, halfHeight: 43 },
       solids: [tower(-52, 170), tower(52, 140), { kind: 'box', look: 'steel', x: TOWN.x, y: TOWN.ground+96, z: TOWN.z, hx: 30, hy: 5, hz: 6, yaw: TOWN.yaw }, ...houses] },
@@ -149,7 +201,37 @@ function harbor(): Solid[] {
   }
   return buildings;
 }
-export const solids: readonly Solid[] = [...landmarks.flatMap(l => l.solids), ...harbor()];
+/** The shrine as plain volumes: a deck on posts over the tidal flat, a stage reaching toward the torii, low halls on the shore. */
+function shrine(): Solid[] {
+  const { x, z, yaw } = SHRINE, deck = 4.4;
+  // `along` is positive inland and negative toward the torii.
+  const box = (look: Look, side: number, along: number, hx: number, hz: number, y0: number, y1: number): Solid =>
+    ({ kind: 'box', look, ...offset(x, z, yaw, side, along), y: (y0+y1)/2, hx, hy: (y1-y0)/2, hz, yaw });
+  const parts: Solid[] = [
+    box('shrine', 0, -24, 38, 20, deck-1.2, deck), box('shrine', 0, -62, 6, 18, deck-1.2, deck),
+    box('shrine', 0, 12, 21, 12, 1, 17), box('shrine', -50, -8, 11, 9, 1, 12.5), box('shrine', 50, -8, 11, 9, 1, 12.5),
+    box('shrine', -30, 4, 9, 2.5, deck, 9), box('shrine', 30, 4, 9, 2.5, deck, 9),
+  ];
+  const stilt = (side: number, along: number) => parts.push({ kind: 'cyl', look: 'stilt', ...offset(x, z, yaw, side, along), r: .9, y0: -6, y1: deck-1.2 });
+  for (let along = -40; along <= -8; along += 16) for (let side = -32; side <= 32; side += 16) stilt(side, along);
+  for (let along = -76; along <= -52; along += 12) for (const side of [-4.5, 4.5]) stilt(side, along);
+  return parts;
+}
+export const solids: readonly Solid[] = [...landmarks.flatMap(l => l.solids), ...harbor(), ...shrine()];
+
+/** How thickly trees grow at a point, from 0 (open ground) to 1 (dense forest); it fades with no edges. */
+export function woods(x: number, z: number): number {
+  const h = terrainHeight(x, z);
+  if (h <= 3) return 0;
+  const [fromFloor] = alongPath(VALLEY, x, z);
+  const patch = .5+.5*hills(x*1.7+300, z*1.7-200);
+  // Forest gathers on the south-west hills, the valley sides and behind the shrine, and thins out eastward.
+  const cover = .62*patch+.4*smooth(520, -150, x)+.45*bump(x, z, -560, 420, 320)+.7*bump(x, z, SHRINE.x+120, SHRINE.z, 160)
+    +.28*smooth(30, 120, fromFloor)*smooth(430, 200, fromFloor)+.45*arms(x, z)[1];
+  const clear = (1-meadow(x, z))*smooth(15+25*patch, 90+60*patch, fromFloor)*(1-.85*smooth(-600, -860, z))
+    *smooth(TOWN.radius*.8, TOWN.radius*1.5, Math.hypot(x-TOWN.x, z-TOWN.z));
+  return clamp(smooth(.42, .95, cover)*clear*smooth(3, 11, h)*smooth(190, 140, h));
+}
 
 function inside(s: Solid, p: Point, margin: number): boolean {
   if (s.kind === 'cyl') return p.y > s.y0-margin && p.y < s.y1+margin && Math.hypot(p.x-s.x, p.z-s.z) < s.r+margin;
