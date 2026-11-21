@@ -1,8 +1,41 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import * as THREE from 'three';
-import { bridgeDressing, toriiDressing, type Dress } from './island-dressing';
-import { landmarks } from './world';
+import { bridgeAnchorDressing, bridgeDressing, roadDressing, toriiDressing, type Dress } from './island-dressing';
+import { BRIDGE, ROAD, landmarks } from './world';
+
+test('the flared road meets the full deck width, perpendicular and flush', () => {
+  const material = new THREE.MeshBasicMaterial();
+  roadDressing(ROAD, geometry => {
+    const vertices = geometry.getAttribute('position'), seam: THREE.Vector3[] = [];
+    for (let i = 0; i < vertices.count; i++) if (Math.abs(vertices.getX(i)-BRIDGE.ends[0]) < 1e-4) {
+      seam.push(new THREE.Vector3().fromBufferAttribute(vertices, i));
+    }
+    assert.ok(seam.length >= 3);
+    assert.equal(Math.min(...seam.map(p => p.z)), BRIDGE.z-9);
+    assert.equal(Math.max(...seam.map(p => p.z)), BRIDGE.z+9);
+    for (const p of seam) assert.ok(Math.abs(p.y-(BRIDGE.deck+2.52)) < 1e-4);
+    geometry.dispose();
+  }, material);
+  material.dispose();
+});
+
+test('the four stone anchors and metal sockets stay within the original collision blocks', () => {
+  const material = new THREE.MeshBasicMaterial();
+  const anchors = landmarks.find(l => l.id === 'bridge')!.solids.filter(s => s.kind === 'box' && s.look === 'deck' && s.hx < 10);
+  assert.equal(anchors.length, 4);
+  for (const s of anchors) if (s.kind === 'box') {
+    const envelope = new THREE.Box3(new THREE.Vector3(s.x-s.hx, s.y-s.hy, s.z-s.hz), new THREE.Vector3(s.x+s.hx, s.y+s.hy, s.z+s.hz));
+    envelope.expandByScalar(1e-4);
+    const add: Dress = (geometry, _material, x, y, z) => {
+      geometry.translate(x, y, z); geometry.computeBoundingBox();
+      assert.ok(envelope.containsBox(geometry.boundingBox!), `anchor at ${s.x}, ${s.z} exceeds its collision envelope`);
+      geometry.dispose();
+    };
+    bridgeAnchorDressing(s, add, material, material, material);
+  }
+  material.dispose();
+});
 
 test('the swept torii cap stays within aircraft clearance of the solid top', () => {
   const lintel = landmarks.find(l => l.id === 'torii')!.solids.find(s => s.kind === 'box' && s.hy >= 3)!;

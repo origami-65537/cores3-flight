@@ -102,7 +102,29 @@ export function shrineDressing(s: Solid, add: Dress, red: THREE.Material, ink: T
   }
 }
 
-/** A quiet ground-hugging ribbon, not a walled road or an in-flight route marker. */
+/** Stone cable anchor, fully contained by the existing small deck solid. */
+export function bridgeAnchorDressing(s: Extract<Solid, { kind: 'box' }>, add: Dress, stone: THREE.Material, ink: THREE.Material, metal: THREE.Material) {
+  const bottom = s.y-s.hy, top = s.y+s.hy, footing = bottom+3.8, cap = top-.5;
+  // The dark footing emerges just above the soil; the pale body sits under a chamfered coping.
+  add(new THREE.BoxGeometry(s.hx*2, footing-bottom, s.hz*2), ink, s.x, (bottom+footing)/2, s.z);
+  add(new THREE.BoxGeometry(s.hx*2-.12, cap-footing, s.hz*2), stone, s.x, (footing+cap)/2, s.z);
+  const coping = new THREE.BoxGeometry(s.hx*2, top-cap, s.hz*2), vertices = coping.getAttribute('position');
+  for (let i = 0; i < vertices.count; i++) if (vertices.getY(i) > 0) {
+    vertices.setX(i, vertices.getX(i)-Math.sign(vertices.getX(i))*.25);
+    vertices.setZ(i, vertices.getZ(i)-Math.sign(vertices.getZ(i))*.25);
+  }
+  coping.computeVertexNormals();
+  add(coping, stone, s.x, (cap+top)/2, s.z);
+  // A flush metal socket faces the tower where its red cable enters the block.
+  const inward = s.x < BRIDGE.x ? 1 : -1;
+  add(new THREE.BoxGeometry(.04, 1.2, 2.6), ink, s.x+inward*(s.hx-.04), top-.7, s.z);
+  for (const side of [-1, 1]) {
+    add(new THREE.CylinderGeometry(.13, .13, .04, 6).rotateZ(Math.PI/2), metal,
+      s.x+inward*(s.hx-.02), top-.7, s.z+side*.95);
+  }
+}
+
+/** The town road flares into the west deck, with no wall or in-flight route marker. */
 export function roadDressing(path: readonly { x: number; z: number }[], add: Dress, material: THREE.Material) {
   const points: THREE.Vector2[] = [];
   for (let i = 1; i < path.length; i++) {
@@ -113,11 +135,19 @@ export function roadDressing(path: readonly { x: number; z: number }[], add: Dre
   if (!points.length) return;
   points.push(new THREE.Vector2(path[path.length-1].x, path[path.length-1].z));
   const positions: number[] = [];
+  let distance = 0;
   const rows = points.map((p, i) => {
+    if (i > 0) distance += p.distanceTo(points[i-1]);
+    const flare = 1-THREE.MathUtils.smoothstep(distance, 0, 80);
+    const width = THREE.MathUtils.lerp(3.5, 9, flare);
     const tangent = points[Math.min(i+1, points.length-1)].clone().sub(points[Math.max(0, i-1)]).normalize();
+    // The first cross-section is exactly parallel to the 18m deck's end face.
+    tangent.lerp(new THREE.Vector2(-1, 0), 1-THREE.MathUtils.smoothstep(distance, 0, 24)).normalize();
     return [-1, 0, 1].map(side => {
-      const x = p.x-tangent.y*3.5*side, z = p.y+tangent.x*3.5*side;
-      return [x, surfaceHeight(x, z)+.12, z];
+      const x = p.x-tangent.y*width*side, z = p.y+tangent.x*width*side;
+      const y = THREE.MathUtils.lerp(surfaceHeight(x, z)+.12, BRIDGE.deck+2.52,
+        1-THREE.MathUtils.smoothstep(distance, 0, 12));
+      return [x, y, z];
     });
   });
   for (let i = 1; i < rows.length; i++) for (let j = 0; j < 2; j++) {

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FEEL } from './feel';
 import { coastMeshes, ocean, random, waterfall } from './island-meshes';
-import { bridgeDressing, roadDressing, shrineDressing, toriiDressing, trees } from './island-dressing';
+import { bridgeAnchorDressing, bridgeDressing, roadDressing, shrineDressing, toriiDressing, trees } from './island-dressing';
 import { BRIDGE, ROAD, TOWN, VOLCANO, WATERFALL, nearStructure, solids, surfaceHeight, terrainHeight, woods, type Look, type Solid } from './world';
 
 const SKY = { clearNear: 700, clearFar: 5200, mistNear: 15, mistFar: 170, seconds: 2.5 };
@@ -153,6 +153,7 @@ export class Island {
     const bronze = new THREE.MeshStandardMaterial({ color: 0x967853, metalness: .35, roughness: .72 });
     const cable = new THREE.MeshLambertMaterial({ color: 0xa1b1b2 });
     const edging = new THREE.MeshLambertMaterial({ color: 0xcccfbd });
+    const anchorStone = new THREE.MeshStandardMaterial({ color: 0xb3b2a4, roughness: .95 });
     const path = new THREE.MeshLambertMaterial({ color: 0xa5a795, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const batches = new Map<THREE.Material, THREE.BufferGeometry[]>();
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, yaw = 0) => {
@@ -163,6 +164,7 @@ export class Island {
     for (const s of solids) {
       if (s.look === 'vermilion') toriiDressing(s, add, looks.vermilion, ink, bronze);
       else if (s.look === 'shrine' || s.look === 'stilt') shrineDressing(s, add, looks.vermilion, ink, looks.stilt, looks.shrine);
+      else if (s.kind === 'box' && s.look === 'deck' && s.hx < 10) bridgeAnchorDressing(s, add, anchorStone, ink, looks.steel);
       else if (s.kind === 'arch') add(archGeometry(s), looks[s.look], s.x, s.y, s.z, s.yaw);
       else if (s.kind === 'box') {
         if (s.look === 'house') {
