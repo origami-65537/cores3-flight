@@ -144,6 +144,8 @@ export class Island {
       tower: this.glass,
       house: new THREE.MeshStandardMaterial({ color: 0xf3e9d2, roughness: .9 }),
       wood: new THREE.MeshLambertMaterial({ color: 0x79533e }),
+      shrine: new THREE.MeshStandardMaterial({ color: 0xc74830, roughness: .78 }),
+      stilt: new THREE.MeshLambertMaterial({ color: 0x79533e }),
     };
     const roof = new THREE.MeshLambertMaterial({ color: 0xb84831, flatShading: true });
     const windows = new THREE.MeshLambertMaterial({ color: 0x304b5b });
