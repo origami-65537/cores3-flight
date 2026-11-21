@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { FEEL } from './feel';
 import { coastMeshes, ocean, random, waterfall } from './island-meshes';
-import { BRIDGE, TOWN, VOLCANO, WATERFALL, nearStructure, solids, surfaceHeight, terrainHeight, type Look, type Solid } from './world';
+import { bridgeDressing, roadDressing, shrineDressing, toriiDressing, trees } from './island-dressing';
+import { BRIDGE, ROAD, TOWN, VOLCANO, WATERFALL, nearStructure, solids, surfaceHeight, terrainHeight, woods, type Look, type Solid } from './world';
 
 const SKY = { clearNear: 700, clearFar: 5200, mistNear: 15, mistFar: 170, seconds: 2.5 };
 // Each fly-through moves the island on to the next time of day.
@@ -16,22 +17,6 @@ export const timesOfDay = TIMES.length;
 
 type ScenerySpot = [x: number, y: number, z: number, radius: number, height: number];
 const slopeAt = (x: number, z: number) => Math.hypot(terrainHeight(x+4, z)-terrainHeight(x-4, z), terrainHeight(x, z+4)-terrainHeight(x, z-4))/8;
-
-function pine() {
-  const crown = (r: number, h: number, y: number, yaw: number) =>
-    new THREE.ConeGeometry(r, h, 5).rotateY(yaw).translate(0, y, 0);
-  const colored = (mesh: THREE.BufferGeometry, tint: string) => {
-    const color = new THREE.Color(tint), colors = new Float32Array(mesh.getAttribute('position').count*3);
-    for (let i = 0; i < colors.length; i += 3) colors.set([color.r, color.g, color.b], i);
-    return mesh.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  };
-  return mergeGeometries([
-    colored(new THREE.CylinderGeometry(.12, .17, .92, 5).translate(0, .44, 0), '#78553d'),
-    colored(crown(1, 1.24, 1.15, .1), '#2d784b'),
-    colored(crown(.76, 1.18, 1.65, .28), '#3f9454'),
-    colored(crown(.52, 1.08, 2.15, .04), '#54a15a'),
-  ]);
-}
 
 function cloud() {
   const mesh = mergeGeometries([
@@ -153,15 +138,22 @@ export class Island {
       rock: new THREE.MeshLambertMaterial({ color: 0x918584, flatShading: true, side: THREE.DoubleSide }),
       white: new THREE.MeshStandardMaterial({ color: 0xf7f3e8, roughness: .7 }),
       red: new THREE.MeshStandardMaterial({ color: 0xd9502f, roughness: .6 }),
-      vermilion: new THREE.MeshStandardMaterial({ color: 0xe2452c, roughness: .6 }),
+      vermilion: new THREE.MeshStandardMaterial({ color: 0xc74830, roughness: .78 }),
       steel: new THREE.MeshStandardMaterial({ color: 0x8d979c, roughness: .6 }),
       deck: new THREE.MeshStandardMaterial({ color: 0x6d7478, roughness: .8 }),
       tower: this.glass,
       house: new THREE.MeshStandardMaterial({ color: 0xf3e9d2, roughness: .9 }),
       wood: new THREE.MeshLambertMaterial({ color: 0x79533e }),
+      shrine: new THREE.MeshLambertMaterial({ color: 0xe1d8bd }),
+      stilt: new THREE.MeshLambertMaterial({ color: 0x645244 }),
     };
     const roof = new THREE.MeshLambertMaterial({ color: 0xb84831, flatShading: true });
     const windows = new THREE.MeshLambertMaterial({ color: 0x304b5b });
+    const ink = new THREE.MeshStandardMaterial({ color: 0x303e3d, roughness: .8 });
+    const bronze = new THREE.MeshStandardMaterial({ color: 0x967853, metalness: .35, roughness: .72 });
+    const cable = new THREE.MeshLambertMaterial({ color: 0xa1b1b2 });
+    const edging = new THREE.MeshLambertMaterial({ color: 0xcccfbd });
+    const path = new THREE.MeshLambertMaterial({ color: 0xa5a795, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
     const batches = new Map<THREE.Material, THREE.BufferGeometry[]>();
     const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number, yaw = 0) => {
       const mesh = geometry.rotateY(yaw).translate(x, y, z);
@@ -169,7 +161,9 @@ export class Island {
       batch.push(mesh.index ? mesh.toNonIndexed() : mesh); batches.set(material, batch);
     };
     for (const s of solids) {
-      if (s.kind === 'arch') add(archGeometry(s), looks[s.look], s.x, s.y, s.z, s.yaw);
+      if (s.look === 'vermilion') toriiDressing(s, add, looks.vermilion, ink, bronze);
+      else if (s.look === 'shrine' || s.look === 'stilt') shrineDressing(s, add, looks.vermilion, ink, looks.stilt, looks.shrine);
+      else if (s.kind === 'arch') add(archGeometry(s), looks[s.look], s.x, s.y, s.z, s.yaw);
       else if (s.kind === 'box') {
         if (s.look === 'house') {
           const base = s.y-s.hy, wall = s.hy*1.43, gable = s.hy*2-wall;
@@ -218,13 +212,16 @@ export class Island {
         add(new THREE.CylinderGeometry(.7, .7, span.length(), 5).applyQuaternion(rotation), looks.red, center.x, center.y, center.z);
       }
     }
+    bridgeDressing(add, cable, edging);
+    roadDressing(ROAD, add, path);
     add(new THREE.CircleGeometry(VOLCANO.floorRadius+8, 24).rotateX(-Math.PI/2), new THREE.MeshBasicMaterial({ color: 0xff7a33 }), VOLCANO.x, VOLCANO.floor+.8, VOLCANO.z);
     for (const [material, meshes] of batches) scene.add(new THREE.Mesh(mergeGeometries(meshes), material));
-    this.scatter('trees', pine(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), i => {
+    this.scatter('trees', trees(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), i => {
       const near = i%3 === 0;
       const x = near ? -895+1450*random(i, 2) : -1350+3100*random(i, 2);
       const z = near ? 365+710*random(i, 3) : -1350+2750*random(i, 3);
       const h = surfaceHeight(x, z), size = 4+8*random(i, 4);
+      if (random(i, 33) > woods(x, z)) return null;
       if (h < 10 || h > 167 || slopeAt(x, z) > .61 || Math.hypot(x-TOWN.x, z-TOWN.z) < TOWN.radius || nearStructure({ x, y: h+size, z }, size+8)) return null;
       if (Math.abs(x-WATERFALL.x) < 28 && z > WATERFALL.z0-14 && z < WATERFALL.z1) return null;
       return [x, h-.36, z, size, size];
@@ -252,7 +249,7 @@ export class Island {
     this.stars.frustumCulled = false; scene.add(this.stars);
   }
 
-  private scatter(kind: keyof typeof FEEL.scenery, geometry: THREE.BufferGeometry, material: THREE.Material, place: (i: number) => ScenerySpot | null) {
+  private scatter(kind: keyof typeof FEEL.scenery, geometry: THREE.BufferGeometry | THREE.BufferGeometry[], material: THREE.Material, place: (i: number) => ScenerySpot | null) {
     const matrices: THREE.Matrix4[] = [];
     for (let i = 0; matrices.length < FEEL.scenery[kind] && i < FEEL.scenery[kind]*8; i++) {
       const spot = place(i);
@@ -261,15 +258,20 @@ export class Island {
         matrices.push(new THREE.Matrix4().makeRotationY(yaw).scale(new THREE.Vector3(spot[3], spot[4], spot[3])).setPosition(spot[0], spot[1], spot[2]));
       }
     }
-    const mesh = new THREE.InstancedMesh(geometry, material, matrices.length);
+    const variants = Array.isArray(geometry) ? geometry : [geometry];
+    const groups = variants.map(() => [] as THREE.Matrix4[]);
+    matrices.forEach((matrix, i) => groups[Math.floor(random(i, 32)*variants.length)].push(matrix));
     const shade = new THREE.Color();
-    matrices.forEach((matrix, i) => {
-      mesh.setMatrixAt(i, matrix);
-      const light = .81+.19*random(i, 24);
-      mesh.setColorAt(i, shade.setRGB(light, light, light));
+    groups.forEach((group, variant) => {
+      const mesh = new THREE.InstancedMesh(variants[variant], material, group.length);
+      group.forEach((matrix, i) => {
+        mesh.setMatrixAt(i, matrix);
+        const light = .84+.16*random(i, 24);
+        mesh.setColorAt(i, shade.setRGB(light, light, light));
+      });
+      mesh.name=kind;
+      mesh.computeBoundingSphere(); this.scene.add(mesh);
     });
-    mesh.name=kind;
-    mesh.computeBoundingSphere(); this.scene.add(mesh);
   }
 
   /** Eases the light toward a time of day and closes the view in as the sea mist thickens. */
