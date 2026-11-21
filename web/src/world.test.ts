@@ -110,7 +110,13 @@ test('the bridge deck lands on the ground at both ends, with open water under th
   const top = BRIDGE.deck+2.5, bridge = landmarks.find(l => l.id === 'bridge')!;
   for (const [end, inland] of [[BRIDGE.ends[0], -1], [BRIDGE.ends[1], 1]]) for (const side of [-9, 0, 9]) {
     const ground = surfaceHeight(end, BRIDGE.z+side), beyond = surfaceHeight(end+12*inland, BRIDGE.z+side);
-    assert.ok(ground > top-1 && ground <= top && Math.abs(beyond-top) < 1, `deck end at ${end}, ${side} meets ground at ${ground}, then ${beyond}`);
+    assert.ok(ground > top-1 && ground < top+.5 && Math.abs(beyond-top) < 1, `deck end at ${end}, ${side} meets ground at ${ground}, then ${beyond}`);
+  }
+  // No road covers the east end, so the islet turf closes over the deck's end face instead of leaving a lip.
+  for (const side of [-9, -4.5, 0, 4.5, 9]) {
+    const z = BRIDGE.z+side, over = (x: number) => surfaceHeight(x, z)-top;
+    for (let x = BRIDGE.ends[1]-3; x <= BRIDGE.ends[1]+12; x += 3) assert.ok(over(x) > .1 && over(x) < .6, `turf over the east deck end at ${x}, ${z}: ${over(x)}`);
+    assert.ok(over(BRIDGE.ends[1]-12) < -.3, `deck clear of the turf at ${z}: ${over(BRIDGE.ends[1]-12)}`);
   }
   assert.ok(bridge.solids.every(s => s.look !== 'steel'), 'no abutment blocks');
   const anchors = bridge.solids.filter(s => s.kind === 'box' && s.look === 'deck' && s.hx < 10);

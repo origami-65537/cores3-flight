@@ -32,7 +32,7 @@ function alongPath(path: readonly Spot[], x: number, z: number): [distance: numb
 const BRIDGE_DECK = 60;
 export const launch: Readonly<Point & { heading: number }> = { x: 0, y: 95, z: 1500, heading: 0 };
 export const VOLCANO = { x: -120, z: -260, rim: 330, floor: 262, rimRadius: 100, floorRadius: 42, skirt: 560, yaw: .1 } as const;
-export const ISLET = { x: 1560, z: 60, r: 175, h: BRIDGE_DECK+2.3 } as const;
+export const ISLET = { x: 1560, z: 60, r: 175, h: BRIDGE_DECK+2.7 } as const;
 export const CAPE = { angle: Math.PI/2-.35, reach: 250, width: .13 } as const;
 export const COVE = { x: -110, z: 1020, rx: 340, rz: 365 } as const;
 export const WATERFALL = { x: 170, z0: 697, z1: 835, width: 26 } as const;
@@ -120,7 +120,7 @@ export function terrainHeight(x: number, z: number): number {
   const around = Math.atan2(z-ISLET.z, x-ISLET.x);
   const islet = Math.hypot(x-ISLET.x, z-ISLET.z)/(ISLET.r*(1+.1*Math.cos(2*around)*Math.sin(around+.6)+.05*Math.sin(5*around)));
   const outerRock = Math.hypot((x+972)/107, (z-1025)/76);
-  // The islet is a flat-topped hill, level with the bridge deck where the deck lands on it.
+  // The islet is a flat-topped hill whose turf closes over the last few metres of the bridge deck.
   h = Math.max(h, islet < 1 ? ISLET.h*smooth(1, .5, islet)+12*bump(x, z, ISLET.x+45, ISLET.z+10, 52) : Math.max(-30, (1-islet)*ISLET.r*.12),
     outerRock < 1 ? 31*(1-outerRock**3) : Math.max(-30, (1-outerRock)*9));
   const bay = Math.hypot((x-BAY.x)/BAY.rx, (z-BAY.z)/BAY.rz);
