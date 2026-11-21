@@ -113,6 +113,12 @@ test('the bridge deck lands on the ground at both ends, with open water under th
     assert.ok(ground > top-1 && ground <= top && Math.abs(beyond-top) < 1, `deck end at ${end}, ${side} meets ground at ${ground}, then ${beyond}`);
   }
   assert.ok(bridge.solids.every(s => s.look !== 'steel'), 'no abutment blocks');
+  const anchors = bridge.solids.filter(s => s.kind === 'box' && s.look === 'deck' && s.hx < 10);
+  assert.equal(anchors.length, 4);
+  for (const s of anchors) if (s.kind === 'box') {
+    const ground = surfaceHeight(s.x, s.z);
+    assert.ok(s.y-s.hy < ground-1 && s.y+s.hy > ground+2 && s.y+s.hy < ground+5, `anchor at ${s.x}, ${s.z} sits in ground at ${ground}`);
+  }
   for (let x = BRIDGE.towers[0]; x <= BRIDGE.towers[1]; x += 6) assert.ok(surfaceHeight(x, BRIDGE.z) < 0);
   assert.deepEqual(ROAD[0], { x: BRIDGE.ends[0], z: BRIDGE.z });
   const road = walk(ROAD, 12);

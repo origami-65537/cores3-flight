@@ -171,6 +171,8 @@ function build(): Landmark[] {
     for (const side of [-12, 12]) bridge.push({ kind: 'box', look: 'red', x, y: (towerHeight-30)/2, z: bz+side, hx: 4, hy: (towerHeight+30)/2, hz: 3.5, yaw: 0 });
     for (const y of [deck-9, 96, towerHeight-3]) bridge.push({ kind: 'box', look: 'red', x, y, z: bz, hx: 3, hy: 3, hz: 12, yaw: 0 });
   }
+  // Low anchor blocks set into the ground where the cables come down beside each deck end.
+  for (const x of BRIDGE.ends) for (const side of [-12, 12]) bridge.push({ kind: 'box', look: 'deck', x, y: deck+2.5, z: bz+side, hx: 5, hy: 3.5, hz: 2.5, yaw: 0 });
   return [
     { id: 'lighthouse', gate: { x: arch.x, y: 0, z: arch.z, yaw: arch.yaw, halfWidth: 28, halfHeight: 49, round: true },
       solids: [{ kind: 'cyl', look: 'white', x: light.x, z: light.z, r: 12, y0: lightBase-4, y1: lightBase+77 },
